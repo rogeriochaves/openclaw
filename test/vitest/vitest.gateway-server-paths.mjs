@@ -7,6 +7,9 @@ export const gatewayPluginTestFiles = [
 
 // Native database consumers retain lifecycle cleanup within each forked process.
 export const gatewayDatabaseWorkerTestFiles = [
+  "src/gateway/session-companion-runtime.test.ts",
+  "src/gateway/session-transcript-preview.hydration.test.ts",
+  "src/gateway/session-history-worker.integration.test.ts",
   "src/gateway/agent-turn/agent-run-dispatch.execution-binding.test.ts",
   "src/gateway/agent-turn/agent-run-dispatch.sqlite.test.ts",
   "src/gateway/approval-fixture.test.ts",
