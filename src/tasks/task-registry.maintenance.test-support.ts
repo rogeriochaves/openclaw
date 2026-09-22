@@ -12,6 +12,7 @@ import { collectCronHistoryOverflowTaskIds } from "./cron-history-retention.js";
 import * as taskRegistry from "./runtime-internal.js";
 import * as acpCleanup from "./task-registry-acp-cleanup.js";
 import type { TaskRegistryAcpMaintenanceRuntime } from "./task-registry-acp-cleanup.js";
+import * as taskDelivery from "./task-registry-delivery.js";
 import * as backingFacts from "./task-registry-maintenance-session-facts.js";
 import type { BackingSessionRuntime } from "./task-registry-maintenance-session-facts.js";
 import * as snapshots from "./task-registry-maintenance-snapshot.js";
@@ -34,10 +35,10 @@ type TaskRegistryMaintenanceRuntime = TaskRegistryAcpMaintenanceRuntime &
     | "listTaskRecords"
     | "markTaskLostById"
     | "markTaskTerminalById"
-    | "maybeDeliverTaskTerminalUpdate"
     | "resolveTaskForLookupToken"
     | "setTaskCleanupAfterById"
   > & {
+    scheduleTaskDelivery: typeof taskDelivery.scheduleTaskDelivery;
     isCronJobActive: typeof cronJobs.isCronJobActive;
     getAgentRunContext: typeof agentRuns.getAgentRunContext;
     hasSubagentTaskOwner?: typeof subagents.hasSubagentTaskOwner;
@@ -144,9 +145,9 @@ function installMaintenanceRuntime(
     runtime.markTaskTerminalById,
   );
   replace(
-    taskRegistry.maybeDeliverTaskTerminalUpdate,
-    () => vi.spyOn(taskRegistry, "maybeDeliverTaskTerminalUpdate"),
-    runtime.maybeDeliverTaskTerminalUpdate,
+    taskDelivery.scheduleTaskDelivery,
+    () => vi.spyOn(taskDelivery, "scheduleTaskDelivery"),
+    runtime.scheduleTaskDelivery,
   );
   replace(
     taskRegistry.resolveTaskForLookupToken,
@@ -374,7 +375,7 @@ export function createTaskRegistryMaintenanceHarness(params: {
       currentTasks.set(patch.taskId, next);
       return next;
     },
-    maybeDeliverTaskTerminalUpdate: async () => null,
+    scheduleTaskDelivery: () => {},
     resolveTaskForLookupToken: () => undefined,
     setTaskCleanupAfterById: (patch) => {
       const current = currentTasks.get(patch.taskId);
@@ -485,7 +486,7 @@ export function configureTaskRegistryMaintenanceRuntimeForTest(params: {
         return next;
       },
       markTaskTerminalById: () => null,
-      maybeDeliverTaskTerminalUpdate: async () => null,
+      scheduleTaskDelivery: () => {},
       resolveTaskForLookupToken: () => undefined,
       setTaskCleanupAfterById: (patch: { taskId: string; cleanupAfter: number }) => {
         const current = params.currentTasks.get(patch.taskId);

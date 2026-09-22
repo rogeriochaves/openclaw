@@ -120,6 +120,7 @@ export async function runManagerTurn(params: {
   await recordSessionHumanDirectMessage(
     {
       sessionKey,
+      agentId,
       entry: initialResolution.kind === "ready" ? initialResolution.entry : undefined,
       actor: { actorType: input.provenance },
       channel: "acp",

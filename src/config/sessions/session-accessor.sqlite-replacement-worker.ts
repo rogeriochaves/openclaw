@@ -11,13 +11,15 @@ import {
   type OpenClawAgentDatabaseExecution,
 } from "../../state/openclaw-agent-execution.js";
 import { runOpenClawAgentWorkerWrite } from "../../state/openclaw-agent-write-admission.js";
-import { retainSessionEntryWorkerPublication } from "./session-accessor.sqlite-entry-cache.js";
+import {
+  retainSessionEntryWorkerPublication,
+  type SessionEntryReplacementPublication,
+} from "./session-accessor.sqlite-entry-cache.js";
 import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import {
   prepareSessionEntryReplacementPublication,
   type SessionEntryReplacementCommit,
   type SessionEntryReplacementCommitted,
-  type SessionEntryReplacementPublication,
 } from "./session-accessor.sqlite-replacement-state.js";
 
 type ReplacementDatabaseOptions = OpenClawAgentDatabaseOptions & { path: string };

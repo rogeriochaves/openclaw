@@ -34,6 +34,7 @@ export async function runTaskDeliveryWithDetachedAdmission(
     // restart closes admission. An already-admitted delivery still reports its
     // own failures instead of hiding them behind a concurrent restart.
     if (!admitted && isGatewayRestartDraining()) {
+      await ensureTaskRegistryReadyAsync(captureOpenClawStateWorkerContext());
       const current = tasks.get(taskId);
       return current ? cloneTaskRecord(current) : null;
     }

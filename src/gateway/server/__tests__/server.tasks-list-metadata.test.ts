@@ -4,9 +4,8 @@ import type { TasksListResult } from "../../../../packages/gateway-protocol/src/
 import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import * as sessionAccessor from "../../../config/sessions/session-accessor.js";
 import * as agentDatabaseReadOnly from "../../../state/openclaw-agent-db-readonly.js";
-import { listTaskRecords } from "../../../tasks/task-registry.js";
+import { createTaskRecord, listTaskRecords } from "../../../tasks/task-registry.js";
 import { configureTaskRegistryRuntime } from "../../../tasks/task-registry.store.js";
-import type { TaskRecord } from "../../../tasks/task-registry.types.js";
 import { resetTaskRegistryForTests } from "../../../tasks/task-runtime.test-helpers.js";
 import { createInMemoryTaskRegistryStore } from "../../../test-utils/task-registry-store.js";
 import { installGatewayTestHooks } from "../../server.auth.test-helpers.js";
@@ -32,13 +31,10 @@ test("preserves task pagination during metadata patches but invalidates new requ
   const initializeTasks = () => {
     resetTaskRegistryForTests({ persist: false });
     configureTaskRegistryRuntime({
-      store: {
-        ...createInMemoryTaskRegistryStore(),
-        loadSnapshot: () => ({
-          tasks: new Map([...createTaskSnapshot()].slice(0, 256)),
-          deliveryStates: new Map(),
-        }),
-      },
+      store: createInMemoryTaskRegistryStore({
+        tasks: new Map([...createTaskSnapshot()].slice(0, 256)),
+        deliveryStates: new Map(),
+      }),
     });
   };
   await withAuthenticatedTaskGateway(initializeTasks, async ({ admin, viewer }) => {
@@ -129,25 +125,23 @@ test("preserves task pagination during metadata patches but invalidates new requ
       expectedTaskIds(listTaskRecords(), 0, 7),
     );
 
-    const metadataTasks = listTaskRecords();
     const missingSessionKey = "agent:main:tasks-missing";
-    const missingSessionTask: TaskRecord = {
-      ...metadataTasks.find((task) => task.taskId === "task-00000")!,
-      taskId: "task-missing-requester",
+    const missingSessionTask = createTaskRecord({
+      runtime: "cli",
       requesterSessionKey: missingSessionKey,
+      requesterAgentId: "main",
       ownerKey: missingSessionKey,
+      scopeKind: "session",
+      runId: "run-missing-requester",
+      task: "Task with missing requester",
+      status: "succeeded",
+      deliveryStatus: "not_applicable",
+      notifyPolicy: "done_only",
       lastEventAt: TASK_COUNT + 100,
-    };
-    resetTaskRegistryForTests({ persist: false });
-    configureTaskRegistryRuntime({
-      store: {
-        ...createInMemoryTaskRegistryStore(),
-        loadSnapshot: () => ({
-          tasks: new Map([...metadataTasks, missingSessionTask].map((task) => [task.taskId, task])),
-          deliveryStates: new Map(),
-        }),
-      },
     });
+    if (!missingSessionTask) {
+      throw new Error("Expected task creation for the missing requester fixture");
+    }
     const beforeCreation = await sendRpc<TasksListResult>(
       viewer,
       "tasks-before-requester-created",

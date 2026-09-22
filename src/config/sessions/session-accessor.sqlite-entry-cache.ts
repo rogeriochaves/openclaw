@@ -37,7 +37,6 @@ import {
   projectSqliteSessionParticipantsBatch,
   readSqliteSessionParticipantProjection,
 } from "./session-accessor.sqlite-participant-projection.js";
-import type { SessionEntryReplacementPublication } from "./session-accessor.sqlite-replacement-state.js";
 import { parseSessionEntryJson, selectSessionEntryRows } from "./session-accessor.sqlite-status.js";
 import type { SessionEntryReadScope } from "./session-accessor.types.js";
 import {
@@ -84,6 +83,14 @@ export type SessionSharingEntry = Pick<
   | "sandbox"
 >;
 type CommittedSessionSharingFacts = { entry: SessionSharingEntry; membership: ReadonlySet<string> };
+
+export type SessionEntryReplacementPublication = {
+  kind: "session-entry-replacements";
+  previous: Map<string, Pick<SessionEntry, "sessionId">>;
+  current: Map<string, SessionSharingEntry>;
+  changedKeys: string[];
+};
+
 type PreparedSessionSharingRead = {
   facts: { entry: SessionSharingEntry | undefined; membership: ReadonlySet<string> } | undefined;
 };

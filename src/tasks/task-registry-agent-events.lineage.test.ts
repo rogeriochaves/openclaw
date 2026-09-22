@@ -12,6 +12,7 @@ import {
 } from "../process/gateway-work-admission.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import * as taskDeliveryAdmission from "./task-registry-delivery-admission.js";
 import { publishTaskRecordAfterAtomicStore } from "./task-registry-publication.js";
 import { prepareTaskRegistryRead, prepareTaskRegistryReadOwner } from "./task-registry-read.js";
 import * as taskRegistryState from "./task-registry-state.js";
@@ -211,6 +212,16 @@ describe("task agent event preparation", () => {
         const readSnapshot = store.loadMutationSnapshotAsync.bind(store);
         const entered = createDeferred();
         const release = createDeferred();
+        const deliver = createDeferred();
+        const deliveries: Promise<unknown>[] = [];
+        const admitDelivery = taskDeliveryAdmission.runTaskDeliveryWithDetachedAdmission;
+        vi.spyOn(taskDeliveryAdmission, "runTaskDeliveryWithDetachedAdmission").mockImplementation(
+          (...args) => {
+            const delivery = deliver.promise.then(() => admitDelivery(...args));
+            deliveries.push(delivery);
+            return delivery;
+          },
+        );
         const failure = new Error("Synthetic native rollback during projection read");
         const writes = vi.spyOn(store, "runAgentEventMutationAsync");
         vi.spyOn(taskRegistryState.taskRegistryLog, "warn").mockImplementation(() => {});
@@ -223,59 +234,68 @@ describe("task agent event preparation", () => {
           }
           return snapshot;
         });
-        let fenceSettled = false;
-        let fence: Promise<unknown> | undefined;
         try {
-          emitAgentEvent({
-            runId: task.runId!,
-            stream: "lifecycle",
-            data: { phase: "start", startedAt: task.createdAt + 1 },
-          });
-          taskRegistryState.invalidateTaskRegistryProjection();
-          await withTestTimeout(entered.promise, 5_000, "Projection read did not begin");
-          fence = prepareTaskRegistryReadOwner().then(
-            () => {
-              fenceSettled = true;
-            },
-            (error: unknown) => {
-              fenceSettled = true;
-              return error;
-            },
-          );
-          const consume = () =>
-            runOpenClawStateWriteTransaction(() => {
-              expect(getTaskById(task.taskId)?.status).toBe("running");
-              expect(peekSystemEvents(task.ownerKey)).toEqual([]);
-              if (outcome === "rollback") {
-                throw failure;
-              }
+          let fenceSettled = false;
+          let fence: Promise<unknown> | undefined;
+          try {
+            emitAgentEvent({
+              runId: task.runId!,
+              stream: "lifecycle",
+              data: { phase: "start", startedAt: task.createdAt + 1 },
             });
-          if (outcome === "rollback") {
-            expect(consume).toThrow(failure);
-          } else {
-            consume();
+            taskRegistryState.invalidateTaskRegistryProjection();
+            await withTestTimeout(entered.promise, 5_000, "Projection read did not begin");
+            fence = prepareTaskRegistryReadOwner().then(
+              () => {
+                fenceSettled = true;
+              },
+              (error: unknown) => {
+                fenceSettled = true;
+                return error;
+              },
+            );
+            const consume = () =>
+              runOpenClawStateWriteTransaction(() => {
+                expect(getTaskById(task.taskId)?.status).toBe("running");
+                expect(peekSystemEvents(task.ownerKey)).toEqual([]);
+                if (outcome === "rollback") {
+                  throw failure;
+                }
+              });
+            if (outcome === "rollback") {
+              expect(consume).toThrow(failure);
+            } else {
+              consume();
+            }
+            // Force the held pre-consumption snapshot to require another read if
+            // preparation keeps retrying after its event lost write ownership.
+            taskRegistryState.invalidateTaskRegistryProjection();
+            await Promise.resolve();
+            expect(fenceSettled).toBe(false);
+          } finally {
+            release.resolve();
+            await joinEvents();
           }
-          // Force the held pre-consumption snapshot to require another read if
-          // preparation keeps retrying after its event lost write ownership.
-          taskRegistryState.invalidateTaskRegistryProjection();
-          await Promise.resolve();
-          expect(fenceSettled).toBe(false);
+          expect(await fence).toBe(outcome === "rollback" ? failure : undefined);
+          // Notification preparation has its own read; finish measuring the event owner first.
+          expect(projectionReads).toBe(1);
+          deliver.resolve();
+          await Promise.all(deliveries);
+          expect(writes).not.toHaveBeenCalled();
+          const durable = loadTaskRegistryStateFromSqliteReadOnly().tasks.get(task.taskId);
+          expect(durable).toMatchObject({
+            status: outcome === "commit" ? "running" : "queued",
+            runId: task.runId,
+          });
+          expect(peekSystemEvents(task.ownerKey)).toHaveLength(outcome === "commit" ? 1 : 0);
+          const read = await prepareTaskRegistryRead();
+          expect(read?.isTaskSettled(task.taskId)).toBe(true);
+          expect(read?.getTaskById(task.taskId)).toEqual(durable);
         } finally {
           release.resolve();
-          await joinEvents();
+          deliver.resolve();
+          await Promise.allSettled(deliveries);
         }
-        expect(await fence).toBe(outcome === "rollback" ? failure : undefined);
-        expect(projectionReads).toBe(1);
-        expect(writes).not.toHaveBeenCalled();
-        const durable = loadTaskRegistryStateFromSqliteReadOnly().tasks.get(task.taskId);
-        expect(durable).toMatchObject({
-          status: outcome === "commit" ? "running" : "queued",
-          runId: task.runId,
-        });
-        expect(peekSystemEvents(task.ownerKey)).toHaveLength(outcome === "commit" ? 1 : 0);
-        const read = await prepareTaskRegistryRead();
-        expect(read?.isTaskSettled(task.taskId)).toBe(true);
-        expect(read?.getTaskById(task.taskId)).toEqual(durable);
       });
     },
   );

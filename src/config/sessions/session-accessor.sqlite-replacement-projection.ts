@@ -101,7 +101,7 @@ async function applySqliteSessionEntryReplacementProjection<T, TReplacement>(
                   statuses: params.statuses,
                   includeLabelOwners: params.includeLabelOwners,
                 },
-                env: resolved.env ?? {},
+                env: { ...resolved.env },
               });
             let result = await read();
             if (!result.replacement) {

@@ -24,11 +24,11 @@ import type {
   readSessionTranscriptModelContext,
   SessionModelContextLimits,
 } from "./session-accessor.sqlite-model-context.js";
-import type { SessionTranscriptWatermark } from "./session-accessor.sqlite-transcript-watermark-read.js";
 import type {
   SessionEntryReplacementSelection,
   SessionEntryReplacementState,
-} from "./session-accessor.sqlite-replacement-state.js";
+} from "./session-accessor.sqlite-replacement-read.js";
+import type { SessionTranscriptWatermark } from "./session-accessor.sqlite-transcript-watermark-read.js";
 import type {
   SessionAccessScope,
   SessionEntryListScope,

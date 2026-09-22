@@ -6,10 +6,7 @@ import {
 import type { TaskMutationContext } from "./task-executor.types.js";
 import type { TaskInitialWorkerCommand } from "./task-initial-worker.types.js";
 import { clearTaskActivity, flushTaskActivity } from "./task-registry-activity.js";
-import {
-  maybeDeliverTaskStateChangeUpdate,
-  maybeDeliverTaskTerminalUpdate,
-} from "./task-registry-delivery.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import { isEquivalentTaskRecord, matchesTaskPersistenceReceipt } from "./task-registry-records.js";
 import {
   assertTaskRegistryOwnerCurrent,
@@ -101,16 +98,7 @@ export async function settleTaskRecordTransitionAsync(
   if (settled?.deliver && settled.task.deliveryStatus !== "not_applicable") {
     try {
       assertTaskRegistryOwnerCurrent(context, store);
-      const observePublication = (publication: Promise<TaskRecord | null>) => {
-        void publication.catch((error: unknown) => {
-          log.warn("Committed task transition could not complete delivery publication", {
-            taskId,
-            error,
-          });
-        });
-      };
-      observePublication(maybeDeliverTaskStateChangeUpdate(settled.task, settled.nextEvent));
-      observePublication(maybeDeliverTaskTerminalUpdate(taskId));
+      scheduleTaskDelivery(settled.task, settled.nextEvent);
     } catch (error) {
       log.warn("Committed task transition could not admit delivery publication", { taskId, error });
     }

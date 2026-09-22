@@ -67,7 +67,6 @@ export {
   markTaskLostById,
   markTaskRunningByRunId,
   markTaskTerminalById,
-  maybeDeliverTaskTerminalUpdate,
   publishTaskRecordAfterAtomicStore,
   recordTaskProgressByRunId,
   resolveTaskForLookupToken,

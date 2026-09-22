@@ -13,8 +13,9 @@ import {
 import { AsyncWorkScope, getAsyncWorkSignal, trackAsyncWork } from "../shared/async-work-scope.js";
 import {
   maybeDeliverTaskStateChangeUpdate,
-  maybeDeliverTaskTerminalUpdate,
+  scheduleTaskDelivery,
 } from "./task-registry-delivery.js";
+import { captureTaskDeliveryWork } from "./task-registry-delivery.test-support.js";
 import type { TaskDeliveryState, TaskEventRecord, TaskRecord } from "./task-registry.types.js";
 
 const storage = vi.hoisted(() => ({
@@ -153,21 +154,13 @@ async function closeCaller(parent: "absent" | "released") {
 }
 
 it.each(["absent", "released"] as const)(
-  "resolves quiet paired notifications after the producer closes with an %s root",
+  "admits no quiet notification work after the producer closes with an %s root",
   async (parent) => {
     const task = seed("quiet");
     const caller = await closeCaller(parent);
-    const outcomes = await caller.run(() =>
-      Promise.allSettled([
-        maybeDeliverTaskStateChangeUpdate(task, event),
-        maybeDeliverTaskTerminalUpdate(task.taskId),
-      ]),
-    );
+    caller.run(() => scheduleTaskDelivery(task, event));
     await setImmediate();
-    expect(outcomes).toEqual([
-      { status: "fulfilled", value: task },
-      { status: "fulfilled", value: task },
-    ]);
+    expect(storage.ensureReady).not.toHaveBeenCalled();
     expect(storage.tasks.get(task.taskId)).toEqual(task);
     expect(storage.send).not.toHaveBeenCalled();
     expect(storage.update).not.toHaveBeenCalled();
@@ -183,6 +176,7 @@ it.each([
 ] as const)(
   "owns $kind delivery and its cleanup after the $parent producer closes",
   async ({ kind, parent }) => {
+    using deliveries = captureTaskDeliveryWork();
     const task = seed(kind);
     const caller = await closeCaller(parent);
     const started = createDeferred();
@@ -196,15 +190,13 @@ it.each([
       started.resolve();
       return await send.promise;
     });
-    const result = caller.run(() =>
-      (kind === "terminal"
-        ? maybeDeliverTaskTerminalUpdate(task.taskId)
-        : maybeDeliverTaskStateChangeUpdate(task, event)
-      ).then(
+    const result = caller.run(() => {
+      scheduleTaskDelivery(task, event);
+      return deliveries.settle().then(
         (value) => ({ ok: true as const, value }),
         (error: unknown) => ({ ok: false as const, error }),
-      ),
-    );
+      );
+    });
     try {
       expect(
         await Promise.race([started.promise.then(() => "started"), result.then(() => "settled")]),
@@ -245,13 +237,17 @@ it.each([
 it.each(["resume", "restart"] as const)(
   "keeps closed-producer delivery behind suspension until %s",
   async (outcome) => {
+    using deliveries = captureTaskDeliveryWork();
     const task = seed("terminal");
     const caller = await closeCaller("released");
     const suspension = tryBeginGatewaySuspendAdmission(() => {});
     expect(suspension?.commit()).toBe(true);
     let settled = false;
     const result = caller
-      .run(() => maybeDeliverTaskTerminalUpdate(task.taskId))
+      .run(() => {
+        scheduleTaskDelivery(task);
+        return deliveries.settle();
+      })
       .then(
         (value) => {
           settled = true;
@@ -287,14 +283,16 @@ it.each(["resume", "restart"] as const)(
 );
 
 it("preserves initial restore failure even when restart would defer delivery", async () => {
-  const task = seed("terminal");
+  const task = seed("state");
   const caller = await closeCaller("absent");
   const failure = new Error("Task registry restore failed");
   storage.ensureReady.mockImplementation(() => {
     throw failure;
   });
   markGatewayRestartDraining();
-  await expect(caller.run(() => maybeDeliverTaskTerminalUpdate(task.taskId))).rejects.toBe(failure);
+  await expect(caller.run(() => maybeDeliverTaskStateChangeUpdate(task, event))).rejects.toBe(
+    failure,
+  );
   expect(storage.send).not.toHaveBeenCalled();
   expect(storage.update).not.toHaveBeenCalled();
   expect(storage.tasks.get(task.taskId)).toEqual(task);

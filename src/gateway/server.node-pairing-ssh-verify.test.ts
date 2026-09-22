@@ -169,12 +169,16 @@ describeWithLanNodePairingServer("gateway ssh-verified node pairing auto-approve
     await attemptWithSshVerify({
       identityName: "ssh-verify-key-match",
       run: async ({ lanIp, loaded, connectNode }) => {
-        probeMock.mockImplementation(async () => ({
-          status: "ok",
-          stdout: `motd noise\n{"deviceId":"${loaded.identity.deviceId}","publicKey":"${loaded.publicKey}"}\n`,
-        }));
+        const probe = createDeferred<NodeIdentityProbeResult>();
+        probeMock.mockImplementation(() => probe.promise);
 
-        const first = await connectNode();
+        // Keep verification pending until the retry-hint response; a completed proof can admit this connect.
+        const first = await connectNode().finally(() => {
+          probe.resolve({
+            status: "ok",
+            stdout: `motd noise\n{"deviceId":"${loaded.identity.deviceId}","publicKey":"${loaded.publicKey}"}\n`,
+          });
+        });
         expect(first.ok).toBe(false);
         const details = first.error?.details as PairingRequiredDetails | undefined;
         // The node must keep retrying while the detached probe can still land.

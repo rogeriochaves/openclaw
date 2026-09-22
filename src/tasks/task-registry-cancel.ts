@@ -17,7 +17,7 @@ import {
   type TaskCancellationControl,
 } from "./task-cancellation-context.js";
 import { isProvisionalSubagentKillTask } from "./task-cancellation-state.js";
-import { maybeDeliverTaskTerminalUpdate } from "./task-registry-delivery.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import { ensureLinkedTaskFlowRegistryReady } from "./task-registry-flow-link.js";
 import { updateTask } from "./task-registry-mutation.js";
 import { finalizeTaskRecordByRunId, updateTaskStateByRunId } from "./task-registry-record-api.js";
@@ -198,7 +198,7 @@ export async function cancelTaskById(params: {
         if (!updated) {
           return notCancelled("Task persistence failed.");
         }
-        void maybeDeliverTaskTerminalUpdate(updated.taskId);
+        scheduleTaskDelivery(updated);
         return {
           found: true,
           cancelled: true,

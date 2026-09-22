@@ -52,8 +52,7 @@ vi.mock("./task-registry-flow-link.js", () => ({
   ensureLinkedTaskFlowRegistryReady: (task: TaskRecord) => memory.beforeFlowReady?.(task.taskId),
 }));
 vi.mock("./task-registry-delivery.js", () => ({
-  maybeDeliverTaskStateChangeUpdate: async () => {},
-  maybeDeliverTaskTerminalUpdate: async () => {},
+  scheduleTaskDelivery: () => {},
 }));
 
 vi.mock("./task-registry.store.kernel.js", () => ({

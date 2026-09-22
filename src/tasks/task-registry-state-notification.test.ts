@@ -24,12 +24,15 @@ import {
   resetTaskFlowRegistryForTests,
 } from "./task-flow-registry.test-support.js";
 import type { sendMessage as SendMessage } from "./task-registry-delivery-runtime.js";
-import { maybeDeliverTaskStateChangeUpdate } from "./task-registry-delivery.js";
+import {
+  maybeDeliverTaskStateChangeUpdate,
+  scheduleTaskDelivery,
+} from "./task-registry-delivery.js";
 import {
   captureTaskDeliveryWork,
   commitTaskDeliveryFixture,
 } from "./task-registry-delivery.test-support.js";
-import { captureTaskRegistryReadFence } from "./task-registry-listener-state.js";
+import * as taskRegistryListener from "./task-registry-listener-state.js";
 import { getTaskDeliveryState } from "./task-registry-mutation.js";
 import { publishTaskRecordAfterAtomicStore } from "./task-registry-publication.js";
 import * as deliveryRuntime from "./task-registry-runtime-loaders.js";
@@ -143,6 +146,59 @@ afterEach(async () => {
 });
 
 describe("task state notification acknowledgements", () => {
+  it.each(["direct", "scheduled"] as const)(
+    "retains %s failure ownership when the database retires during preparation",
+    async (mode) => {
+      const task = createTask();
+      const before = stored(task.taskId);
+      const entered = createDeferred();
+      const release = createDeferred();
+      vi.spyOn(taskRegistryListener, "captureTaskRegistryReadFence").mockImplementationOnce(
+        async () => {
+          entered.resolve();
+          await release.promise;
+        },
+      );
+      const warnings = vi.spyOn(taskRegistryState.taskRegistryLog, "warn");
+      using deliveries = captureTaskDeliveryWork();
+      const event = progress(task.createdAt + 10);
+      let result: Promise<TaskRecord | null | void>;
+      if (mode === "direct") {
+        result = maybeDeliverTaskStateChangeUpdate(task, event);
+      } else {
+        scheduleTaskDelivery(task, event);
+        result = deliveries.settle();
+      }
+      const outcome = result.then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      notifications.push({ complete: () => release.resolve(), result: outcome.then(() => null) });
+      await entered.promise;
+      await closeOpenClawStateDatabaseAsync();
+      release.resolve();
+      expect(await outcome).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" }),
+      });
+      await setImmediate();
+      if (mode === "scheduled") {
+        expect(warnings).toHaveBeenCalledExactlyOnceWith(
+          "Background task notification failed",
+          expect.objectContaining({
+            taskId: task.taskId,
+            error: expect.objectContaining({ code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" }),
+          }),
+        );
+      } else {
+        expect(warnings).not.toHaveBeenCalled();
+      }
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(systemEvents.drainSystemEvents(ownerKey)).toEqual([]);
+      expect(stored(task.taskId)).toEqual(before);
+    },
+  );
+
   it("joins an accepted terminal event before selecting progress for delivery", async () => {
     const task = createTask();
     const admitted = createDeferred();
@@ -164,7 +220,9 @@ describe("task state notification acknowledgements", () => {
       await setImmediate();
       expect(sendMessage).not.toHaveBeenCalled();
       release.resolve();
-      await captureTaskRegistryReadFence(captureOpenClawStateWorkerContext().admission);
+      await taskRegistryListener.captureTaskRegistryReadFence(
+        captureOpenClawStateWorkerContext().admission,
+      );
       await result;
       await nativeDeliveries.settle();
       expect(stored(task.taskId).task?.status).toBe("succeeded");

@@ -5,10 +5,7 @@ import {
 } from "./task-backing-authority.js";
 import { readManagedTaskBacking, sameTaskBackingInstance } from "./task-backing-records.js";
 import { flushTaskActivity } from "./task-registry-activity.js";
-import {
-  maybeDeliverTaskStateChangeUpdate,
-  maybeDeliverTaskTerminalUpdate,
-} from "./task-registry-delivery.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import { ensureLinkedTaskFlowRegistryReady } from "./task-registry-flow-link.js";
 import { publishTaskRecordUpdate } from "./task-registry-mutation.js";
 import { captureTaskPersistenceReceipt, cloneTaskRecord } from "./task-registry-records.js";
@@ -78,8 +75,7 @@ export function transitionTaskRecordsByRunNative(transition: TaskRunTransition):
             onCommitted(receipt) {
               publishTaskRecordUpdate(receipt.previous, receipt.task, receipt.persisted);
               if (receipt.deliver) {
-                void maybeDeliverTaskStateChangeUpdate(receipt.task, receipt.nextEvent);
-                void maybeDeliverTaskTerminalUpdate(receipt.task.taskId);
+                scheduleTaskDelivery(receipt.task, receipt.nextEvent);
               }
             },
           },

@@ -6,6 +6,8 @@ import { readOpenClawAgentDatabaseIdentity } from "../../state/openclaw-agent-db
 import { OpenClawAgentDatabaseReadOnlyScope } from "../../state/openclaw-agent-db-readonly-scope.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { withMockedPlatform } from "../../test-utils/vitest-spies.js";
+import * as configEnv from "../config-env-vars.js";
 import {
   readCommittedSessionEntryCache,
   readSessionEntryCache,
@@ -21,11 +23,18 @@ import {
   applySessionEntryExactReplacements,
 } from "./session-accessor.sqlite-replacement-projection.js";
 
-it("commits session replacements without entering a caller-thread SQLite write transaction", async () => {
+it("commits platform-normalized replacements without entering a caller-thread SQLite write transaction", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const database = openOpenClawAgentDatabase({ agentId: "main" });
     const sessionKey = "agent:main:replacement-worker";
     writeSessionEntry(database, sessionKey, { sessionId: "replacement", updatedAt: 1 });
+    const normalized = withMockedPlatform("win32", () =>
+      configEnv.cloneEnvWithPlatformSemantics(process.env),
+    );
+    expect(() => structuredClone(normalized)).toThrow();
+    const clone = vi
+      .spyOn(configEnv, "cloneEnvWithPlatformSemantics")
+      .mockReturnValueOnce(normalized);
     const databasePrototype: DatabaseSync = Object.getPrototypeOf(database.db);
     const exec = vi.spyOn(databasePrototype, "exec");
     try {
@@ -44,6 +53,7 @@ it("commits session replacements without entering a caller-thread SQLite write t
       expect(exec.mock.calls.filter(([sql]) => /\bBEGIN\s+IMMEDIATE\b/i.test(sql))).toEqual([]);
     } finally {
       exec.mockRestore();
+      clone.mockRestore();
     }
     expect(readExactSessionEntryRow(database, sessionKey)?.entry.label).toBe("committed");
   });

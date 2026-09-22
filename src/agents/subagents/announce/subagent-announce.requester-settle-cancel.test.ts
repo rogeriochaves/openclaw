@@ -3,13 +3,9 @@ import { getRuntimeConfig } from "../../../config/config.js";
 import { patchSessionEntryCore } from "../../../config/sessions/session-accessor.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../../infra/system-events.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
-import { tasksWithPendingDelivery } from "../../../tasks/task-registry-state.js";
-import {
-  cancelTaskById,
-  findTaskByRunId,
-  getTaskById,
-  maybeDeliverTaskTerminalUpdate,
-} from "../../../tasks/task-registry.js";
+import { scheduleTaskDelivery } from "../../../tasks/task-registry-delivery.js";
+import { captureTaskDeliveryWork } from "../../../tasks/task-registry-delivery.test-support.js";
+import { cancelTaskById, findTaskByRunId, getTaskById } from "../../../tasks/task-registry.js";
 import { killSessionSubagentRuns } from "../registry/subagent-control-kill.js";
 import { useSubagentControlFixture } from "../registry/subagent-control.test-support.js";
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
@@ -194,6 +190,7 @@ it.each([
 it.each(["batch", "ordinary"] as const)(
   "keeps %s cancellation delivery with its current owner",
   async (mode) => {
+    using deliveries = captureTaskDeliveryWork();
     const parentKey = `agent:main:cancel-notification-${mode}`;
     const childKey = `agent:main:subagent:cancel-notification-${mode}`;
     const siblingKey = `agent:main:subagent:cancel-sibling-${mode}`;
@@ -247,10 +244,13 @@ it.each(["batch", "ordinary"] as const)(
       reason: "Operator cancelled this retrieval",
     });
     expect(result).toMatchObject({ found: true, cancelled: true });
-    // Cancellation starts delivery independently; join its claim before redriving.
-    await vi.waitFor(() => expect(tasksWithPendingDelivery.has(task.taskId)).toBe(false));
-    // Redrive the public delivery path as well as the immediate cancellation notification.
-    await maybeDeliverTaskTerminalUpdate(task.taskId);
+    await deliveries.settle();
+    const current = getTaskById(task.taskId);
+    if (!current) {
+      throw new Error("Cancelled task is missing");
+    }
+    scheduleTaskDelivery(current);
+    await deliveries.settle();
     expect(getTaskById(task.taskId)).toMatchObject({
       status: "cancelled",
       error: "Operator cancelled this retrieval",

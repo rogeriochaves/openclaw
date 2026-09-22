@@ -52,7 +52,7 @@ vi.mock("./task-registry.process-state.js", () => ({
   addRunIdIndex() {},
 }));
 vi.mock("./task-registry-delivery.js", () => ({
-  maybeDeliverTaskTerminalUpdate: async () => {},
+  scheduleTaskDelivery: () => {},
 }));
 
 import { createAcpTaskBackingDetail } from "./task-backing-records.js";

@@ -38,10 +38,7 @@ import {
   type TaskAgentEventPublication,
   type TaskAgentEventReceipt,
 } from "./task-registry-agent-event.operation.js";
-import {
-  maybeDeliverTaskStateChangeUpdate,
-  maybeDeliverTaskTerminalUpdate,
-} from "./task-registry-delivery.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import { updateTaskWithPublication } from "./task-registry-mutation.js";
 import {
   captureTaskPersistenceReceipt,
@@ -56,7 +53,7 @@ import {
   tasks,
 } from "./task-registry-state.js";
 import { getTaskRegistryStore, type TaskRegistryStore } from "./task-registry.store.js";
-import { isTerminalTaskStatus, type TaskRecord } from "./task-registry.types.js";
+import type { TaskRecord } from "./task-registry.types.js";
 import { getTaskRunOwner } from "./task-run-owner.js";
 
 type EventSource = {
@@ -209,18 +206,6 @@ function retainCommittedEventAfterResultFailure(pending: PendingEvent): void {
   }
 }
 
-function publishDelivery(receipt: TaskAgentEventPublication): void {
-  if (receipt.task.deliveryStatus === "not_applicable" || receipt.task.notifyPolicy === "silent") {
-    return;
-  }
-  if (receipt.nextEvent) {
-    void maybeDeliverTaskStateChangeUpdate(receipt.task, receipt.nextEvent);
-  }
-  if (isTerminalTaskStatus(receipt.task.status)) {
-    void maybeDeliverTaskTerminalUpdate(receipt.task.taskId);
-  }
-}
-
 function prepareNativeEventConsumption(): { consume: () => void; release: () => void } | undefined {
   const store = getTaskRegistryStore();
   const pending = [...pendingEvents].filter(
@@ -310,7 +295,7 @@ function prepareNativeEventConsumption(): { consume: () => void; release: () => 
             // A later enclosing write can replace this row, including an ABA replacement.
             const latest = tasks.get(entry.input.taskId);
             if (latest && publication.isCurrent() && isEquivalentTaskRecord(latest, receipt.task)) {
-              publishDelivery(receipt);
+              scheduleTaskDelivery(receipt.task, receipt.nextEvent);
             }
           };
           const database = openClawStateDatabaseCache.getOpenClawStateDatabaseIfOpenAtPath(
@@ -454,7 +439,7 @@ async function persist(pending: PendingEvent): Promise<void> {
               pending.phase.kind !== "consumed" &&
               isEquivalentTaskRecord(task, pending.publication.task)
             ) {
-              publishDelivery(pending.publication);
+              scheduleTaskDelivery(pending.publication.task, pending.publication.nextEvent);
             }
           },
         },

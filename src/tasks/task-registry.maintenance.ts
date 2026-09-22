@@ -48,7 +48,6 @@ import {
   listTaskRecords,
   markTaskLostById,
   markTaskTerminalById,
-  maybeDeliverTaskTerminalUpdate,
   resolveTaskForLookupToken,
   setTaskCleanupAfterById,
 } from "./runtime-internal.js";
@@ -61,6 +60,7 @@ import {
   type CloseAcpSession,
   type TaskRegistryAcpMaintenanceRuntime,
 } from "./task-registry-acp-cleanup.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import {
   applyTaskRegistryMaintenanceRetention,
   shouldStampCleanupAfter,
@@ -449,7 +449,7 @@ function markTaskLost(
       error: task.error ?? resolveTaskLostError(task, context),
       cleanupAfter,
     }) ?? task;
-  void maybeDeliverTaskTerminalUpdate(updated.taskId);
+  scheduleTaskDelivery(updated);
   return updated;
 }
 
@@ -466,7 +466,7 @@ function markTaskRecovered(task: TaskRecord, recovery: CronTerminalRecovery): Ta
         : {}),
       ...(recovery.detail !== undefined ? { detail: recovery.detail } : {}),
     }) ?? projectTaskRecovered(task, recovery);
-  void maybeDeliverTaskTerminalUpdate(updated.taskId);
+  scheduleTaskDelivery(updated);
   return updated;
 }
 

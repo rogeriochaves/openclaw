@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { getTaskMirroredFlowIds } from "./task-flow-runtime-internal.js";
 import { selectExistingTaskForCreate } from "./task-registry-create-rules.js";
 import { runTaskCreateOperation } from "./task-registry-create.operation.js";
-import { maybeDeliverTaskTerminalUpdate } from "./task-registry-delivery.js";
+import { scheduleTaskDelivery } from "./task-registry-delivery.js";
 import {
   assertParentFlowLinkAllowed,
   ensureLinkedTaskFlowRegistryReady,
@@ -33,7 +33,7 @@ import {
   recordTaskRegistryProjectionWrite,
 } from "./task-registry.process-state.js";
 import { tryPersistTaskDeliveryStateUpsert, tryPersistTaskUpsert } from "./task-registry.store.js";
-import { isTerminalTaskStatus, type TaskRecord } from "./task-registry.types.js";
+import type { TaskRecord } from "./task-registry.types.js";
 
 class TaskCreateRejected extends Error {}
 
@@ -131,9 +131,7 @@ export function createTaskRecord(params: CreateTaskRecordParams): TaskRecord | n
                 kind: "upserted",
                 task: cloneTaskRecordForObserver(record),
               }));
-              if (isTerminalTaskStatus(record.status)) {
-                void maybeDeliverTaskTerminalUpdate(taskId);
-              }
+              scheduleTaskDelivery(record);
             },
           },
         );

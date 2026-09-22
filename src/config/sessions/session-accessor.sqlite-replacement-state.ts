@@ -1,11 +1,7 @@
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
-import type {
-  SessionEntryReplacementSnapshot,
-  SessionEntryStatus,
-} from "./session-accessor.sqlite-contract.js";
 import {
   projectSessionSharingEntry,
-  type SessionSharingEntry,
+  type SessionEntryReplacementPublication,
 } from "./session-accessor.sqlite-entry-cache.js";
 import { sqliteSessionEntriesEqual } from "./session-accessor.sqlite-entry-equality.js";
 import {
@@ -27,20 +23,8 @@ import { cloneSessionEntry } from "./session-accessor.sqlite-scope.js";
 import type { SessionEntryReplacement } from "./session-accessor.types.js";
 import type { SessionEntry } from "./types.js";
 
-export type SessionEntryReplacementSelection = {
-  sessionKeys?: readonly string[];
-  statuses?: readonly SessionEntryStatus[];
-  includeLabelOwners?: string;
-};
-
 export type SqliteSessionEntryReplacement = SessionEntryReplacement & {
   previousSessionKeys?: readonly string[];
-};
-
-export type SessionEntryReplacementState = {
-  entries: SessionEntryReplacementSnapshot[];
-  expectedRows: Map<string, ResolvedSessionEntryRow>;
-  labelOwnerKeys: string[];
 };
 
 export type SessionEntryReplacementCommit = {
@@ -57,13 +41,6 @@ export type SessionEntryReplacementCommitted = {
   previous: Map<string, SessionEntry>;
   current: Map<string, SessionEntry>;
   maintenancePlans: SessionEntryMaintenancePlan[];
-};
-
-export type SessionEntryReplacementPublication = {
-  kind: "session-entry-replacements";
-  previous: Map<string, Pick<SessionEntry, "sessionId">>;
-  current: Map<string, SessionSharingEntry>;
-  changedKeys: string[];
 };
 
 /** Receipts carry only publication facts, never saved prompts or maintenance payloads. */

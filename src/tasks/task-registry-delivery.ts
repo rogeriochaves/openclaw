@@ -163,7 +163,22 @@ function queueBlockedTaskFollowup(task: TaskRecord, owner: TaskDeliveryOwner) {
   return queueTaskSystemEvent(task, followupText, owner, "background-task-blocked");
 }
 
-export async function maybeDeliverTaskTerminalUpdate(taskId: string): Promise<TaskRecord | null> {
+/** Capture notification policy at publication; delayed work still rechecks live delivery authority. */
+export function scheduleTaskDelivery(task: TaskRecord, latestEvent?: TaskEventRecord): void {
+  const observe = (delivery: Promise<TaskRecord | null>) => {
+    void delivery.catch((error: unknown) => {
+      taskRegistryLog.warn("Background task notification failed", { taskId: task.taskId, error });
+    });
+  };
+  if (latestEvent && shouldAutoDeliverTaskStateChange(task)) {
+    observe(maybeDeliverTaskStateChangeUpdate(task, latestEvent));
+  }
+  if (shouldAutoDeliverTaskTerminalUpdate(task)) {
+    observe(maybeDeliverTaskTerminalUpdate(task.taskId));
+  }
+}
+
+async function maybeDeliverTaskTerminalUpdate(taskId: string): Promise<TaskRecord | null> {
   return await runTaskDeliveryWithDetachedAdmission(taskId, async () =>
     maybeDeliverTaskTerminalUpdateUnderAdmission(taskId),
   );
@@ -620,7 +635,7 @@ async function maybeDeliverTaskStateChangeUpdateUnderAdmission(
       };
     });
     if ("result" in prepared) {
-      return prepared.result;
+      return await prepared.result;
     }
     const { current, owner, acknowledge } = prepared.send.facts;
     const sendResult = await prepared.send.pending;
@@ -641,7 +656,7 @@ async function maybeDeliverTaskStateChangeUpdateUnderAdmission(
   } catch (error) {
     taskRegistryLog.warn("Failed to deliver background task state change", {
       taskId,
-      ownerKey: initial.current.ownerKey,
+      ownerKey: expectedTask.ownerKey,
       error,
     });
     const readCurrent = () => {

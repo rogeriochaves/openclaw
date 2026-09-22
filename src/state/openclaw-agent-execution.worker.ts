@@ -44,17 +44,17 @@ import {
 } from "./openclaw-state-db-cache.js";
 import { openOpenClawStateDatabase } from "./openclaw-state-db.js";
 
-export async function createSqliteWorkerBackend(
+export function createSqliteWorkerBackend(
   input: AgentDatabaseExecutionOpen,
   opening: { databasePath: string },
-): Promise<SqliteWorkerBackend<AgentDatabaseOperations>> {
+): SqliteWorkerBackend<AgentDatabaseOperations> {
   const backend = openAgentDatabaseBackend(input, opening);
   try {
     backend.execute({ type: "database.prepareWrite", input: undefined });
     return backend;
   } catch (error) {
     try {
-      await backend.close();
+      backend.close();
     } catch (cleanupError) {
       throw createSqliteLifecycleAggregateError(
         [error, cleanupError],
@@ -74,10 +74,14 @@ export function openExistingSqliteWorkerBackend(
   return openAgentDatabaseBackend(input, opening);
 }
 
+type AgentDatabaseNativeBackend = Omit<SqliteWorkerBackend<AgentDatabaseOperations>, "close"> & {
+  close(): void;
+};
+
 function openAgentDatabaseBackend(
   input: AgentDatabaseExecutionOpen,
   opening: { databasePath: string; existingIdentity?: string },
-): SqliteWorkerBackend<AgentDatabaseOperations> {
+): AgentDatabaseNativeBackend {
   if (opening.databasePath !== input.databasePath) {
     throw new Error("Agent database open does not match its captured execution owner");
   }

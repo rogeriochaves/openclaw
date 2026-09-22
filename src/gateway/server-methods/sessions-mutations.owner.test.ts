@@ -1,3 +1,4 @@
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionsPatchManyParams } from "../../../packages/gateway-protocol/src/index.js";
 import {
@@ -15,10 +16,12 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { registerInternalHook, unregisterInternalHook } from "../../hooks/internal-hooks.js";
+import * as workerAdmission from "../../infra/sqlite-worker-operation-admission.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import {
-  closeOpenClawAgentDatabaseByPath,
+  closeOpenClawAgentDatabaseByPathAsync,
+  closeOpenClawAgentDatabasesAsync,
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
@@ -45,6 +48,7 @@ import type {
 
 afterEach(async () => {
   await flushPendingSessionsChangedEvents();
+  await closeOpenClawAgentDatabasesAsync();
   closeOpenClawAgentDatabasesForTest();
   vi.restoreAllMocks();
 });
@@ -148,7 +152,7 @@ describe("sessions.patch", () => {
           });
           expect(saved.details).toEqual({ ok: true, sessionKey, defaultPresentation: "expanded" });
           const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
-          expect(closeOpenClawAgentDatabaseByPath(database.path)).toBe(true);
+          expect(await closeOpenClawAgentDatabaseByPathAsync(database.path)).toBe(true);
           expect(loadSessionEntry(scope)).toMatchObject({
             boardFace: "chat",
             boardPresentation: "expanded",
@@ -178,7 +182,7 @@ describe("sessions.patch", () => {
     });
   });
 
-  it("rechecks dashboard tool authority inside the actual session write transaction", async () => {
+  it("rechecks dashboard tool authority at the actual session commit admission", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const sessionKey = "agent:main:dashboard-authority";
       const scope = { agentId: "main", env: state.env, sessionKey };
@@ -188,10 +192,25 @@ describe("sessions.patch", () => {
         boardPresentation: "split",
       });
       const before = loadSessionEntry(scope);
-      const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
       const requestContext = context({});
       let revoked = false;
-      let rejectedInsideTransaction = false;
+      let reachedCommitAdmission = false;
+      const createAdmission = workerAdmission.createSqliteWorkerOperationAdmission;
+      vi.spyOn(workerAdmission, "createSqliteWorkerOperationAdmission").mockImplementation(
+        (admit, attachment) =>
+          createAdmission((request, grant) => {
+            if (
+              request.stage === "commit" &&
+              isRecord(request.facts) &&
+              isRecord(request.facts.publication) &&
+              request.facts.publication.kind === "session-entry-replacements"
+            ) {
+              reachedCommitAdmission = true;
+              revoked = true;
+            }
+            admit(request, grant);
+          }, attachment),
+      );
       const tool = createDashboardTool({ agentSessionKey: sessionKey, agentId: "main" });
       await expect(
         withGatewayToolCallerIdentity(
@@ -200,19 +219,13 @@ describe("sessions.patch", () => {
             sessionKey,
             operationalRunInstance: { instanceId: "dashboard-instance", runId: "dashboard-run" },
             gatewayContextResolver: () => requestContext,
-            receiptAuthority: () => {
-              if (database.db.isTransaction) {
-                rejectedInsideTransaction = true;
-                revoked = true;
-              }
-              return !revoked;
-            },
+            receiptAuthority: () => !revoked,
           },
           () =>
             tool.execute("save", { action: "set_default_presentation", presentation: "expanded" }),
         ),
       ).rejects.toThrow(/authority.*no longer active/i);
-      expect(rejectedInsideTransaction).toBe(true);
+      expect(reachedCommitAdmission).toBe(true);
       expect(loadSessionEntry(scope)).toEqual(before);
       expect(requestContext.broadcastToConnIds).not.toHaveBeenCalled();
     });
