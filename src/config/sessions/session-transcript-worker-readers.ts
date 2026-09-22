@@ -1,8 +1,9 @@
-import type {
-  SessionHistoryWorkerDatabase,
-  SessionHistoryWorkerInput,
-  SessionHistoryWorkerPreparedInput,
-  SessionTranscriptWorkerValues,
+import {
+  MAX_SESSION_ROW_FACTS_KEYS,
+  type SessionHistoryWorkerDatabase,
+  type SessionHistoryWorkerInput,
+  type SessionHistoryWorkerPreparedInput,
+  type SessionTranscriptWorkerValues,
 } from "./session-transcript-worker.types.js";
 
 export type SessionHistoryWorkerRequestRunner = <TResult>(
@@ -141,6 +142,30 @@ export function createSessionHistoryWorkerReaders(
           return value;
         },
       ),
+    readRowFacts: async (input) => {
+      if (input.sessionKeys.length > MAX_SESSION_ROW_FACTS_KEYS) {
+        throw new Error(`Session row facts support at most ${MAX_SESSION_ROW_FACTS_KEYS} keys`);
+      }
+      const captured = {
+        env: { ...input.env },
+        sessionKeys: [...input.sessionKeys],
+        continuation: input.continuation ? { ...input.continuation } : undefined,
+      };
+      return await runRequest(
+        () => ({ kind: "session-row-facts", ...captured }),
+        JSON.stringify(captured).length * 2,
+        (value) => {
+          if (
+            typeof value === "boolean" ||
+            Array.isArray(value) ||
+            value.kind !== "session-row-facts"
+          ) {
+            throw new Error("Session history worker returned another result instead of row facts");
+          }
+          return value;
+        },
+      );
+    },
     readEntries: async (scope) =>
       await runRequest(
         () => ({ kind: "session-entry-list", scope }),

@@ -107,7 +107,6 @@ test("lists and previews the selected aggregate global owner over WebSocket", as
           agentId: "work",
           model: "gpt-5.5",
           derivedTitle: "Work global conversation",
-          lastMessagePreview: "Work global conversation",
         },
       ]);
     }
@@ -116,7 +115,12 @@ test("lists and previews the selected aggregate global owner over WebSocket", as
     });
     expect(preview, JSON.stringify(preview)).toMatchObject({
       ok: true,
-      payload: { status: "ok", agentId: "work", derivedTitle: "Work global conversation" },
+      payload: {
+        status: "ok",
+        agentId: "work",
+        derivedTitle: "Work global conversation",
+        lastMessagePreview: "Work global conversation",
+      },
     });
     const resolved = await rpcReq(ws, "sessions.resolve", {
       label: "Work global conversation",
