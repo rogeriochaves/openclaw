@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 370300,
-  "reason": "Avatar-hat catalog measured 370,196 B locally against main baseline 369,600 B (enforcement 370,176 B); 370,300 B rounds up with Linux headroom, and the unchanged 512 B growth and 64 B build-variance allowances give a 370,876 B enforcement limit, 700 B (0.19 %) above the base limit.",
-  "updatedAt": "2026-09-21"
+  "startupJsGzipBytes": 370369,
+  "reason": "Foreign-destination report formatting is included in the startup foundation chunk. Same-toolchain CI-base comparison measured 370,570 B before and 370,945 B after (+375 B). Raise the baseline and cap by only 69 B; unchanged 512 B growth and 64 B build-variance allowances produce the required 370,945 B enforcement limit.",
+  "updatedAt": "2026-09-22"
 }
