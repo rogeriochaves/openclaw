@@ -34,6 +34,7 @@ import {
 import type { OutboxStoreRuntime, StoredOutboxScopeHost } from "./app-shell-gateway.ts";
 import type { ApplicationRuntime } from "./bootstrap.ts";
 import { canGoBackInNativeEmbed } from "./browser.ts";
+import { resolveChatSendShortcut } from "./chat-send-shortcut.ts";
 import type { ApplicationContext, ApplicationNavigationOptions } from "./context.ts";
 import { resolveControlUiAuthToken } from "./control-ui-auth.ts";
 import { gatewayPresentationScope } from "./gateway-presentation-scope.ts";
@@ -66,7 +67,6 @@ import {
   NAV_WIDTH_MAX,
   NAV_WIDTH_MIN,
   normalizeCatalogOpenTarget,
-  normalizeChatSendShortcut,
 } from "./settings.ts";
 import { renderCollapsedHomeToggle } from "./shell-assistant-toggles.ts";
 import { createUpdateProgressWatcher } from "./update-confirmation.ts";
@@ -410,7 +410,7 @@ export function renderApplicationShell(host: ShellViewHost) {
     ${
       !nativeEmbed && isOptionalElementDefined(KEYBOARD_SHORTCUTS_ELEMENT)
         ? html`<openclaw-keyboard-shortcuts-dialog
-            .sendShortcut=${normalizeChatSendShortcut(uiSettings.chatSendShortcut)}
+            .sendShortcut=${resolveChatSendShortcut(uiSettings.chatSendShortcut)}
           ></openclaw-keyboard-shortcuts-dialog>`
         : nothing
     }

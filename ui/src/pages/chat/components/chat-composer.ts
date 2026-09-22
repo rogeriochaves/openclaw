@@ -1,10 +1,7 @@
 // Chat-owned composer orchestration.
 import { nothing } from "lit";
-import {
-  normalizeChatSendShortcut,
-  patchSettings,
-  type ChatFollowUpMode,
-} from "../../../app/settings.ts";
+import { resolveChatSendShortcut } from "../../../app/chat-send-shortcut.ts";
+import { patchSettings, type ChatFollowUpMode } from "../../../app/settings.ts";
 import "../../../components/tooltip.ts";
 import { t } from "../../../i18n/index.ts";
 import type { HumanMention } from "../../../lib/chat/chat-types.ts";
@@ -202,7 +199,7 @@ export function renderChatComposer(props: ChatComposerProps) {
     getTextarea: skillMenuHost.getTextarea,
     commitDraft: commitMenuDraft,
   };
-  const sendShortcut = normalizeChatSendShortcut(props.sendShortcut);
+  const sendShortcut = resolveChatSendShortcut(props.sendShortcut);
   // Keyboard and tooltip share the opposite action, including inherited queue modes.
   const alternateFollowUpMode: ChatFollowUpMode | undefined =
     props.connected &&

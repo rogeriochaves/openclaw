@@ -3,6 +3,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import type { SessionObserverDigest } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { ControlUiSessionPullRequest } from "../../../../src/gateway/control-ui-contract.js";
 import type { ControlUiPanel } from "../../../../src/plugin-sdk/control-ui.js";
+import { resolveChatSendShortcut } from "../../app/chat-send-shortcut.ts";
 import { isBrowserPanelAvailable } from "../../app/panel-availability.ts";
 import type { BrowserTabSelection } from "../../components/browser/browser-target.ts";
 import { icons } from "../../components/icons.ts";
@@ -188,7 +189,7 @@ export function sidebarPanelDefinitions(
         .pullRequests=${params.pullRequests}
         .companion=${params.companion}
         .connected=${state?.connected === true}
-        .sendShortcut=${state?.settings.chatSendShortcut ?? "enter"}
+        .sendShortcut=${resolveChatSendShortcut(state?.settings.chatSendShortcut)}
         .onSubmit=${params.onCompanionSubmit}
         .onDraftChange=${params.onCompanionDraftChange}
         .onVisibilityChange=${params.onCompanionVisibilityChange}
