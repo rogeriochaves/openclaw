@@ -61,6 +61,42 @@ jobs:
           install-bun: "false"
           # Testbox hydration uses the ordinary pnpm store cache. Canonical CI
           # owns the exact dependency archive and never delegates here.
+      - name: Isolate cache restore for incomplete-stream diagnosis
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci-burden/f99-cache-repro'
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(/var/tmp/openclaw-vitest-fs-cache /var/tmp/openclaw-node-compile-cache .artifacts/vitest-worker-cache)
+          for index in "${!paths[@]}"; do
+            if [[ -e "${paths[$index]}" ]]; then
+              mv "${paths[$index]}" "/var/tmp/f99-preexisting-cache-$index"
+            fi
+          done
+      - name: Restore recorded Vitest transforms
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci-burden/f99-cache-repro'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: /var/tmp/openclaw-vitest-fs-cache
+          key: openclaw/openclaw-vitest-fs-v3-protected-Linux-X64-node-24.x-0f25b6f831fce9176585b3c5eaecdea2c0a389236e3cd10b490d40e4947b35d4-35714587871-1
+          fail-on-cache-miss: true
+      - name: Restore recorded Node compile cache
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci-burden/f99-cache-repro'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: /var/tmp/openclaw-node-compile-cache
+          key: openclaw/openclaw-node-compile-v3-test-protected-Linux-X64-node-24.x-35714587871-1
+          fail-on-cache-miss: true
+      - name: Restore recorded compiled workers
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci-burden/f99-cache-repro'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .artifacts/vitest-worker-cache
+          key: openclaw/openclaw-vitest-workers-v1-protected-Linux-X64-node-24.19.0-35716433120-1
+          fail-on-cache-miss: true
+      - name: Preserve recorded workers across source synchronization
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci-burden/f99-cache-repro'
+        shell: bash
+        run: cp -a .artifacts/vitest-worker-cache /var/tmp/f99-recorded-vitest-workers
       - name: Prepare Testbox shell
         uses: ./.github/actions/prepare-testbox-shell
         with:
