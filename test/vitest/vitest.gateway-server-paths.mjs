@@ -7,9 +7,6 @@ export const gatewayPluginTestFiles = [
 
 // Native database consumers retain lifecycle cleanup within each forked process.
 export const gatewayDatabaseWorkerTestFiles = [
-  "src/gateway/session-companion-runtime.test.ts",
-  "src/gateway/session-transcript-preview.hydration.test.ts",
-  "src/gateway/session-history-worker.integration.test.ts",
   "src/gateway/agent-turn/agent-run-dispatch.execution-binding.test.ts",
   "src/gateway/agent-turn/agent-run-dispatch.sqlite.test.ts",
   "src/gateway/approval-fixture.test.ts",
@@ -141,14 +138,17 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/server/ws-connection/connect-hello.setup-completion.test.ts",
   "src/gateway/server/ws-connection/message-handler.control-ui-build-admission.test.ts",
   "src/gateway/server/ws-connection/message-handler.post-connect-health.test.ts",
+  "src/gateway/session-companion-runtime.test.ts",
   "src/gateway/session-delivery-clock-jump.integration.test.ts",
   "src/gateway/session-groups.test.ts",
+  "src/gateway/session-history-worker.integration.test.ts",
   "src/gateway/session-message-events.exec-completion.test.ts",
   "src/gateway/session-message-events.test.ts",
   "src/gateway/session-repository-materialization.test.ts",
   "src/gateway/session-repository-publication-handoff.test.ts",
   "src/gateway/session-startup-migration.test.ts",
   "src/gateway/session-swarm-summary.test.ts",
+  "src/gateway/session-transcript-preview.hydration.test.ts",
   "src/gateway/session-utils-store-lookup.test.ts",
   "src/gateway/session-utils.agent-models.test.ts",
   "src/gateway/session-utils.queued-collector-admission.test.ts",
