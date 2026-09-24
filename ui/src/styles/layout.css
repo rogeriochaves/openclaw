@@ -699,6 +699,12 @@ html:is(.openclaw-native-macos, .openclaw-native-nav, .openclaw-native-web-chrom
   border-color: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+:root[data-theme-mode="light"] .settings-sidebar__item--active {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
 .settings-sidebar__item-icon {
   display: flex;
   align-items: center;
@@ -3313,6 +3319,14 @@ a:is(
   border-color: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+/* Light mode lifts the selected row onto a white card instead of a pink
+   wash, so the accent only lands on the icon. */
+:root[data-theme-mode="light"] :is(.nav-item.active, .nav-item--active) {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
 .nav-item.active .nav-item__icon,
 .nav-item--active .nav-item__icon {
   opacity: 1;
@@ -4767,6 +4781,11 @@ html.openclaw-native-macos:not(.openclaw-native-nav):not(.openclaw-native-web-ch
   letter-spacing: -0.03em;
   line-height: 1.2;
   color: var(--accent);
+}
+
+/* On a white canvas a red page heading reads as an alert; keep it ink. */
+:root[data-theme-mode="light"] .page-title {
+  color: var(--text-strong);
 }
 
 .page-subtitle {

@@ -245,6 +245,8 @@
   --control-ui-input-text-size: max(16px, calc(14px * var(--control-ui-text-scale)));
   --chat-text-size: var(--control-ui-text-md);
   --chat-block-gap: var(--chat-text-size);
+  /* Chat prose leading. Disclosure clamps multiply by it, so change it here. */
+  --chat-line-height: 1.5;
 
   /* Shadows - Subtle, layered depth */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -511,25 +513,27 @@
 /* Defaults must lose to named palettes even when their link precedes the app CSS. */
 :root:where([data-theme-mode="light"]) {
   /*
-   * Warm paper light mode - terracotta accent on ivory
+   * Paper light mode - white reading canvas, warm neutral chrome, one
+   * calm brick-red accent used for primary actions, links and focus.
    *
-   * WCAG 2.1 AA audit (bg = #faf9f7, relative luminance ≈ 0.941):
-   *   --accent #bd4531  contrast ≈ 4.9:1  AA text ✓
-   *   --primary-foreground #ffffff on #bd4531 button: 5.2:1 AA ✓
-   *   --text #403c35 ≈ 10.4:1 AAA ✓, --muted #6e6960 ≈ 5.2:1 AA ✓
+   * WCAG 2.1 AA audit (worst surface = --bg-muted #f0eee9):
+   *   --accent #b8432f  4.67:1 (5.41:1 on white)  AA text ✓
+   *   --primary-foreground #ffffff on #b8432f button: 5.41:1 AA ✓
+   *   --text #2d2b28 12.2:1 AAA ✓, --muted-strong #46443f 8.4:1 AAA ✓,
+   *   --muted #6b6760 4.85:1 AA ✓
    */
   --bg: #faf9f7;
-  --bg-accent: #f4f1ec;
+  --bg-accent: #f5f4f1;
   --bg-elevated: #ffffff;
-  --bg-hover: #efebe4;
-  --bg-muted: #efebe4;
-  --bg-content: #f4f1ec;
+  --bg-hover: #f0eee9;
+  --bg-muted: #f3f2ee;
+  --bg-content: #ffffff;
 
   --card: #ffffff;
-  --card-foreground: #211e1a;
-  --card-highlight: rgba(60, 42, 24, 0.03);
+  --card-foreground: #1f1e1c;
+  --card-highlight: rgba(28, 25, 20, 0.02);
   --popover: #ffffff;
-  --popover-foreground: #211e1a;
+  --popover-foreground: #1f1e1c;
   --session-hovercard-surface: var(--card);
   --session-hovercard-progress-surface: color-mix(
     in srgb,
@@ -537,33 +541,35 @@
     var(--panel-strong) 46%
   );
 
-  --panel: #faf9f7;
-  --panel-strong: #f4f1ec;
-  --panel-hover: #e9e4dc;
-  --chrome: rgba(250, 249, 247, 0.96);
-  --chrome-strong: rgba(250, 249, 247, 0.98);
+  --panel: #f6f5f2;
+  --panel-strong: #f0eee9;
+  --panel-hover: #ebe8e2;
+  --chrome: rgba(255, 255, 255, 0.94);
+  --chrome-strong: rgba(255, 255, 255, 0.98);
 
-  --text: #403c35;
-  --text-strong: #211e1a;
-  --chat-text: #403c35;
-  --muted: #6e6960;
-  --muted-strong: #56524a;
-  --muted-foreground: #6e6960;
+  --text: #2d2b28;
+  --text-strong: #1f1e1c;
+  --chat-text: #2d2b28;
+  --muted: #6b6760;
+  --muted-strong: #46443f;
+  --muted-foreground: #6b6760;
   --file-icon-glyph: #737373;
+  --chat-line-height: 1.6;
 
-  --border: #e8e4dc;
-  --border-strong: #d6d0c5;
-  --border-hover: #b4ac9e;
-  --input: #e8e4dc;
-  --ring: #bd4531;
+  --border: #ebe9e4;
+  --border-strong: #dedad3;
+  --border-hover: #c4bfb5;
+  --input: #e3e0da;
+  --ring: #b8432f;
 
-  --accent: #bd4531;
-  --accent-hover: #a83c29;
-  --accent-muted: #bd4531;
-  --accent-subtle: rgba(189, 69, 49, 0.08);
+  --accent: #b8432f;
+  --accent-hover: #a33a28;
+  --accent-muted: #b8432f;
+  --accent-subtle: rgba(184, 67, 47, 0.07);
   --accent-foreground: #ffffff;
-  --accent-glow: rgba(189, 69, 49, 0.12);
-  --primary: #bd4531;
+  --accent-glow: rgba(184, 67, 47, 0.1);
+  --primary: #b8432f;
+  --primary-hover: #a33a28;
   --primary-foreground: #ffffff;
 
   /* Original lobster artwork reads well on light surfaces. */
@@ -571,8 +577,8 @@
   --lobster-icon-shade: #991b1b;
   --lobster-icon-eye: #050810;
 
-  --secondary: #f4f1ec;
-  --secondary-foreground: #403c35;
+  --secondary: #f3f2ee;
+  --secondary-foreground: #2d2b28;
   --accent-2: #0d9488;
   --accent-2-muted: rgba(13, 148, 136, 0.75);
   --accent-2-subtle: rgba(13, 148, 136, 0.08);
@@ -626,11 +632,11 @@
   --info-subtle: rgba(29, 78, 216, 0.08);
   --pr-merged: #7c3aed;
 
-  --focus: rgba(189, 69, 49, 0.15);
+  --focus: rgba(184, 67, 47, 0.15);
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 70%, transparent);
   --focus-glow: 0 0 0 2px var(--bg), 0 0 0 3px var(--ring), 0 0 12px var(--accent-glow);
 
-  --grid-line: rgba(60, 42, 24, 0.05);
+  --grid-line: rgba(28, 25, 20, 0.05);
 
   --hljs-keyword: #cf222e;
   --hljs-number: #0550ae;
@@ -642,14 +648,14 @@
   --hljs-deletion: #a40e26;
   --hljs-addition: #116329;
 
-  /* Light shadows - Subtle, warm-tinted */
-  --shadow-sm: 0 1px 2px rgba(60, 42, 24, 0.05);
-  --shadow-md: 0 4px 12px rgba(60, 42, 24, 0.07);
-  --shadow-lg: 0 12px 28px rgba(60, 42, 24, 0.09);
-  --shadow-xl: 0 24px 48px rgba(60, 42, 24, 0.11);
+  /* Light shadows - soft neutral lift; hairline borders carry the edges. */
+  --shadow-sm: 0 1px 2px rgba(28, 25, 20, 0.04);
+  --shadow-md: 0 1px 2px rgba(28, 25, 20, 0.04), 0 4px 12px rgba(28, 25, 20, 0.05);
+  --shadow-lg: 0 2px 4px rgba(28, 25, 20, 0.04), 0 12px 28px rgba(28, 25, 20, 0.08);
+  --shadow-xl: 0 4px 8px rgba(28, 25, 20, 0.04), 0 24px 48px rgba(28, 25, 20, 0.1);
   --shadow-glow: 0 0 20px var(--accent-glow);
-  --overlay-border: color-mix(in srgb, var(--border-strong) 64%, transparent);
-  --overlay-shadow: 0 1px 2px rgb(60 42 24 / 0.035), 0 8px 24px rgb(60 42 24 / 0.065);
+  --overlay-border: color-mix(in srgb, var(--border-strong) 80%, transparent);
+  --overlay-shadow: 0 1px 2px rgb(28 25 20 / 0.04), 0 8px 24px rgb(28 25 20 / 0.08);
 
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23444' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 

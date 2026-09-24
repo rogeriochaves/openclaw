@@ -883,8 +883,8 @@ img.chat-avatar {
 }
 
 :root[data-theme-mode="light"] .chat-bubble:not(:where(.chat-bubble--tool-shell)):hover {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--border-hover);
+  box-shadow: none;
 }
 
 /* Forwarded cards share the user's quiet edge in both themes and on hover. */
@@ -914,7 +914,8 @@ img.chat-avatar {
 
 /* Theme selection must not outrank the bare sent-media shell below. */
 :where(:root[data-theme-mode="light"]) .chat-group.user .chat-bubble {
-  --chat-bubble-background: color-mix(in srgb, var(--accent) 15%, var(--bg));
+  /* A quiet neutral fill: the accent stays reserved for actions and links. */
+  --chat-bubble-background: var(--bg-muted);
   border-color: transparent;
   background: var(--chat-bubble-background);
   color: var(--text-strong);
@@ -949,7 +950,9 @@ img.chat-avatar {
 }
 
 :where(:root[data-theme-mode="light"]) .chat-group.user.chat-group--sender-tint .chat-bubble {
-  --chat-bubble-background: hsl(var(--chat-sender-hue) 65% 94%);
+  /* Identity stays on the avatar and sender name; a per-sender pastel fill
+     clashes with the accent on a white canvas. */
+  --chat-bubble-background: var(--bg-muted);
 }
 
 /* Keep tinted user turns borderless when the generic light hover skin applies. */
@@ -999,7 +1002,7 @@ img.chat-avatar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: calc(var(--chat-text-size) * 1.5);
+  min-height: calc(var(--chat-text-size) * var(--chat-line-height));
   color: var(--muted);
 }
 

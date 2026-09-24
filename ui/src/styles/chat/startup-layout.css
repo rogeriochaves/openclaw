@@ -120,7 +120,7 @@
 .chat-text {
   font-family: var(--font-chat);
   font-size: var(--chat-text-size);
-  line-height: 1.5;
+  line-height: var(--chat-line-height);
   color: var(--chat-text);
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -149,6 +149,10 @@
   align-items: flex-start;
   padding-bottom: var(--chat-turn-gap);
   margin-inline: 4px 16px;
+}
+
+:root[data-theme-mode="light"] .chat-group {
+  --chat-turn-gap: 32px;
 }
 
 /* Both sides share the content edge inside the trailing avatar gutter. */
