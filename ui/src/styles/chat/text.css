@@ -25,12 +25,15 @@
 .chat-message-disclosure:not(.is-expanded) .chat-message-disclosure__content {
   /* Legacy line clamp compresses hidden blocks that browser descendant reveal can
      expose as overlapping text. Clip the natural Markdown layout instead. */
-  max-height: var(--chat-disclosure-clamp, calc(var(--chat-text-size) * 1.5 * 5));
+  max-height: var(
+    --chat-disclosure-clamp,
+    calc(var(--chat-text-size) * var(--chat-line-height) * 5)
+  );
   overflow: hidden;
 }
 
 .chat-message-disclosure--forwarded:not(.is-expanded) > .chat-message-disclosure__content {
-  max-height: calc(var(--chat-text-size) * 1.5 * 2.5);
+  max-height: calc(var(--chat-text-size) * var(--chat-line-height) * 2.5);
 }
 
 .chat-message-disclosure--forwarded:has(> .chat-message-disclosure__toggle[hidden])
@@ -42,7 +45,11 @@
   > .chat-message-disclosure__content {
   mask-image: linear-gradient(
     to bottom,
-    black calc(100% - var(--chat-disclosure-fade-size, var(--chat-text-size) * 1.5 * 0.5)),
+    black
+      calc(
+        100% -
+          var(--chat-disclosure-fade-size, var(--chat-text-size) * var(--chat-line-height) * 0.5)
+      ),
     rgb(0 0 0 / 35%)
   );
 }
