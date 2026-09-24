@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { SessionCompanionExchange } from "../../packages/gateway-protocol/src/schema/sessions.js";
-import { prepareSystemAgentRunAdmission } from "../agents/admitted-run-context.js";
+import {
+  prepareSystemAgentRunAdmission,
+  type PreparedAgentRunAdmission,
+} from "../agents/admitted-run-context.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import { buildBtwCliPrompt } from "../agents/btw-prompts.js";
+import type { PreparedCliRunContext } from "../agents/cli-runner/types.js";
+import type { InternalSessionEffectsTarget } from "../agents/internal-session-effects.js";
 import { withSessionManagerWrite } from "../agents/sessions/session-manager-write-admission.js";
 import { resolveSimpleCompletionSelectionForAgent } from "../agents/simple-completion-runtime.js";
 import { resolveUtilityModelRefForAgent } from "../agents/utility-model.js";
@@ -14,7 +20,10 @@ import { redactToolPayloadText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import type { SessionCompanionContextReader } from "./session-companion-context.js";
-import { SESSION_COMPANION_TOOLS } from "./session-companion-policy.js";
+import {
+  resolveSessionCompanionCliRuntime,
+  SESSION_COMPANION_TOOLS,
+} from "./session-companion-policy.js";
 import {
   trimSessionCompanionExchanges,
   type SessionCompanionThread,
@@ -186,6 +195,23 @@ async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
     params.assertSourceCurrent,
   );
   try {
+    const cliRuntime = resolveSessionCompanionCliRuntime({
+      cfg: params.cfg,
+      agentId: params.agentId,
+      selection,
+    });
+    if (cliRuntime) {
+      executionStarted = true;
+      return await runSessionCompanionViaCliRuntime({
+        ...params,
+        cliRuntime,
+        modelId: selection.modelId,
+        authProfileId: selection.profileId,
+        target,
+        preparedRunAdmission,
+        runId,
+      });
+    }
     const [{ SessionManager }, { runEmbeddedAgent }] = await Promise.all([
       import("../agents/sessions/index.js"),
       import("../agents/embedded-agent.js"),
@@ -263,6 +289,70 @@ async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
       target,
       executionStarted ? undefined : expectedSeedOwner,
     );
+  }
+}
+
+/**
+ * Subscription-backed CLI runtimes have no direct provider credential, so Side
+ * chat runs as a tool-free, one-shot side question on the owning CLI backend.
+ * The bounded reference context stands in for the read-only session tools,
+ * which the CLI bridge cannot scope to the observed session.
+ */
+async function runSessionCompanionViaCliRuntime(
+  params: SessionCompanionRunParams & {
+    cliRuntime: string;
+    modelId: string;
+    authProfileId?: string;
+    target: InternalSessionEffectsTarget;
+    preparedRunAdmission: PreparedAgentRunAdmission;
+    runId: string;
+  },
+): Promise<string> {
+  const [{ prepareCliRunContext }, { executePreparedCliRun }] = await Promise.all([
+    import("../agents/cli-runner/prepare.runtime.js"),
+    import("../agents/cli-runner/execute.runtime.js"),
+  ]);
+  const history = params.messages.slice(0, -1);
+  const question = params.messages.at(-1)?.content ?? "";
+  let prepared: PreparedCliRunContext | undefined;
+  try {
+    params.assertSourceCurrent?.();
+    prepared = await prepareCliRunContext({
+      preparedRunAdmission: params.preparedRunAdmission,
+      sessionId: params.target.sessionId,
+      sessionKey: params.target.sessionKey,
+      sessionEntry: params.target.sessionEntry,
+      sessionFile: params.target.sessionFile,
+      agentId: params.agentId,
+      trigger: "manual",
+      workspaceDir: params.workspaceDir,
+      config: params.cfg,
+      prompt: buildBtwCliPrompt({
+        messages: history.map((message) =>
+          toRunnerHistoryMessage(message, {
+            provider: params.cliRuntime,
+            modelId: params.modelId,
+          }),
+        ),
+        question,
+        imageCount: 0,
+      }),
+      extraSystemPrompt: params.systemPrompt,
+      executionMode: "side-question",
+      provider: params.cliRuntime,
+      model: params.modelId,
+      disableTools: true,
+      timeoutMs: ASK_TIMEOUT_MS,
+      runTimeoutOverrideMs: ASK_TIMEOUT_MS,
+      runId: params.runId,
+      authProfileId: params.authProfileId,
+      abortSignal: params.signal,
+    });
+    params.signal.throwIfAborted();
+    params.assertSourceCurrent?.();
+    return (await executePreparedCliRun(prepared)).text;
+  } finally {
+    await prepared?.preparedBackend.cleanup?.();
   }
 }
 
