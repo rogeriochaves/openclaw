@@ -1187,7 +1187,7 @@
 .chat-tasks-status__claw {
   display: inline-flex;
   align-items: center;
-  color: var(--accent);
+  color: var(--brand-claw);
 }
 
 .chat-tasks-status__claw svg {
