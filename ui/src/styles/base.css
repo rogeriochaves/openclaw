@@ -136,6 +136,8 @@
   --brand-codex: #10a37f;
   --brand-claude: #d97757;
   --brand-google: #4285f4;
+  /* OpenClaw claw mark (working claw, run rings). Stays red under any accent. */
+  --brand-claw: #ff5c5c;
 
   --session-color-red: #f07878;
   --session-color-blue: #72a7ed;
@@ -564,6 +566,7 @@
 
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  --brand-claw: #bd4531;
   --accent-muted: #2563eb;
   --accent-subtle: rgba(37, 99, 235, 0.08);
   --accent-foreground: #ffffff;

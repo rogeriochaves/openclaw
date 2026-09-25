@@ -350,8 +350,8 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   position: absolute;
   inset: -2px;
   box-sizing: border-box;
-  border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-top-color: var(--accent);
+  border: 1.5px solid color-mix(in srgb, var(--brand-claw) 28%, transparent);
+  border-top-color: var(--brand-claw);
   border-radius: var(--radius-full);
   pointer-events: none;
 }
@@ -381,13 +381,13 @@ openclaw-session-owner-chip .viewer-avatar__initials {
 }
 
 .session-glyph__trace-track {
-  stroke: color-mix(in srgb, var(--accent) 28%, transparent);
+  stroke: color-mix(in srgb, var(--brand-claw) 28%, transparent);
 }
 
 /* The arc covers the same share of its outline as the ring's quarter turn and
    moves at the ring's linear speed (~45px/s). */
 .session-glyph__trace-run {
-  stroke: var(--accent);
+  stroke: var(--brand-claw);
   stroke-linecap: round;
   stroke-dasharray: 25 75;
   animation: session-run-trace 2s linear infinite;
@@ -5794,8 +5794,8 @@ td.data-table-key-col {
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
-  border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-top-color: var(--accent);
+  border: 1.5px solid color-mix(in srgb, var(--brand-claw) 28%, transparent);
+  border-top-color: var(--brand-claw);
   border-radius: var(--radius-full);
 }
 
@@ -5825,7 +5825,7 @@ td.data-table-key-col {
   .session-run-spinner,
   .session-glyph__ring {
     animation: none;
-    border-color: var(--accent);
+    border-color: var(--brand-claw);
   }
 
   .session-glyph__trace-run {
@@ -5833,7 +5833,7 @@ td.data-table-key-col {
   }
 
   .session-glyph__trace-track {
-    stroke: var(--accent);
+    stroke: var(--brand-claw);
   }
 }
 
