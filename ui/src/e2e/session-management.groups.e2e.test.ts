@@ -981,7 +981,7 @@ suite.define(() => {
     }
   });
 
-  it("keeps empty gateway groups compact for the selected agent", async () => {
+  it("hides empty gateway groups for the selected agent", async () => {
     const context = await suite.browser.newContext(createControlUiE2eContextOptions());
     const page = await context.newPage();
     const gateway = await installMockGateway(page, {
@@ -1023,43 +1023,9 @@ suite.define(() => {
         )
         .toBe(true);
 
-      const emptyGroups = page.locator('[data-session-section^="category:"]');
-      await expect.poll(() => emptyGroups.count()).toBe(2);
-
-      for (const name of ["Email intake", "Customer replies"]) {
-        const group = page.locator(`[data-session-section="category:${name}"]`);
-        await group.waitFor({ state: "visible" });
-        await expect
-          .poll(() => group.locator(":scope > .sidebar-recent-sessions__head").count())
-          .toBe(1);
-        const toggle = group.getByRole("button", { name, exact: true });
-        await toggle.waitFor({ state: "visible" });
-        await expect.poll(() => toggle.getAttribute("aria-expanded")).toBe("true");
-      }
-
-      await expect.poll(() => emptyGroups.locator(".sidebar-session-empty-hint").count()).toBe(0);
-      await expect
-        .poll(() => emptyGroups.locator(".sidebar-recent-sessions__list").count())
-        .toBe(0);
-
-      const firstEmptyGroup = emptyGroups.first();
-      const groupHeight = () =>
-        firstEmptyGroup.evaluate((element) => element.getBoundingClientRect().height);
-      await expect.poll(groupHeight).toBeGreaterThan(0);
-      const expandedHeight = await groupHeight();
-      await captureUiProof(suite, page, "sidebar-empty-cross-agent-groups.png");
-
-      const toggle = firstEmptyGroup.locator(".sidebar-session-group-toggle");
-      await toggle.click();
-      await expect.poll(() => toggle.getAttribute("aria-expanded")).toBe("false");
-      // DOMRect measurements can differ by subpixel rounding without a layout change.
-      await expect.poll(groupHeight).toBeCloseTo(expandedHeight, 2);
-      await expect
-        .poll(() => firstEmptyGroup.locator(".sidebar-session-empty-hint").count())
-        .toBe(0);
-      await expect
-        .poll(() => firstEmptyGroup.locator(".sidebar-recent-sessions__list").count())
-        .toBe(0);
+      // Fork: groups without sessions for this agent are hidden, not compact.
+      await page.locator(".sidebar-session-toolbar").waitFor({ state: "visible" });
+      await expect.poll(() => page.locator('[data-session-section^="category:"]').count()).toBe(0);
     } finally {
       await context.close();
     }

@@ -1299,13 +1299,15 @@ openclaw-settings-save-indicator:empty {
   box-shadow: var(--shadow-sm);
 }
 
+/* Spans the nav rows above: the label starts on their icon column and the
+   buttons end on the header actions' edge. */
 .sidebar-session-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
   min-height: 24px;
-  margin-inline: -8px 0;
-  padding: 0 10px 0 var(--sidebar-text-offset);
+  margin-inline: -8px;
+  padding: 0 2px 0 11px;
 }
 
 .sidebar-session-toolbar__button {
@@ -1328,7 +1330,7 @@ openclaw-settings-save-indicator:empty {
 }
 
 .sidebar-session-toolbar .sidebar-recent-sessions__label-text {
-  flex: 0 0 auto;
+  flex: 1 0 auto;
 }
 
 .sidebar-session-filter-summary {
@@ -1554,7 +1556,8 @@ openclaw-settings-save-indicator:empty {
   align-items: center;
   gap: 8px;
   min-height: 24px;
-  padding: 0 10px 0 var(--sidebar-inset);
+  margin-inline-end: -8px;
+  padding: 0 2px 0 var(--sidebar-inset);
   color: color-mix(in srgb, var(--muted) 72%, var(--text) 28%);
   transition: color var(--duration-fast) ease;
 }
@@ -1667,7 +1670,9 @@ openclaw-settings-save-indicator:empty {
 
 .sidebar-session-group-count {
   flex: 0 0 auto;
+  min-width: var(--sidebar-session-group-action-size, auto);
   color: var(--muted);
+  text-align: center;
   font-size: calc(10px * var(--control-ui-text-scale));
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
@@ -1882,6 +1887,29 @@ openclaw-settings-save-indicator:empty {
 
   .sidebar-session-catalog-new-spacer {
     display: none;
+  }
+
+  /* Plain group actions take no room while hidden, so the count sits flush
+     right under the toolbar buttons; hover or focus opens their slots. */
+  .sidebar-recent-sessions__head
+    .sidebar-session-group-actions:not(
+      .sidebar-session-catalog-grouping,
+      .sidebar-session-catalog-new,
+      [aria-expanded="true"],
+      .sidebar-session-sort--filtered
+    ) {
+    width: 0;
+    margin-inline-start: -8px;
+    overflow: hidden;
+  }
+
+  .sidebar-recent-sessions__head:is(:hover, :has(:focus-visible))
+    .sidebar-session-group-actions:not(
+      .sidebar-session-catalog-grouping,
+      .sidebar-session-catalog-new
+    ) {
+    width: var(--sidebar-session-group-action-size);
+    margin-inline-start: 0;
   }
 }
 
@@ -3320,11 +3348,15 @@ a:is(
 }
 
 /* Light mode lifts the selected row onto a white card instead of a pink
-   wash, so the accent only lands on the icon. */
+   wash; the card alone marks it, so the icon stays ink. */
 :root[data-theme-mode="light"] :is(.nav-item.active, .nav-item--active) {
   background: var(--card);
   border-color: var(--border);
   box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme-mode="light"] :is(.nav-item.active, .nav-item--active) .nav-item__icon {
+  color: var(--text-strong);
 }
 
 .nav-item.active .nav-item__icon,
@@ -3661,23 +3693,14 @@ a:is(
   padding: 3px 8px;
 }
 
-.sidebar-footer-bar--one-action {
-  padding-inline-end: 44px;
-}
-
-.sidebar-footer-bar:has(.sidebar-footer-bar__home) {
-  padding-inline-end: 84px;
-}
-
+/* Actions sit in flow after the identity card, which takes all free width. */
 .sidebar-footer-actions {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-end: 8px;
   display: flex;
   height: 32px;
+  flex: none;
   align-items: center;
-  gap: 8px;
-  transform: translateY(-50%);
+  gap: 2px;
+  margin-inline-start: auto;
 }
 
 openclaw-sidebar-attention {

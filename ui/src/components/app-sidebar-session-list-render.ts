@@ -593,9 +593,16 @@ function renderSessionListBody(params: {
           return renderSessionSection({ host, section, personHeaders });
         }
         // Personal filters already omit empty sections in the projection.
-        // Otherwise preserve the collaborator and drag destination behavior.
+        // Otherwise preserve the collaborator and drag destination behavior:
+        // empty groups reappear as drop targets while a session is dragged,
+        // and a group created empty in this tab stays until it gets a session.
+        const categoryName = section.id.startsWith("category:")
+          ? section.id.slice("category:".length)
+          : null;
         if (
-          section.id === "ungrouped" &&
+          (section.id === "ungrouped" ||
+            (categoryName !== null &&
+              !host.sessionOrganizer.createdEmptySessionGroups.has(categoryName))) &&
           section.totalRowCount === 0 &&
           !params.nativeSessionsHaveMore &&
           !host.sessionOwnershipVisible &&

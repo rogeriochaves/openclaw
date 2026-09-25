@@ -2122,6 +2122,15 @@
   color: var(--accent);
 }
 
+/* Light mode keeps the accent for actions; full access is a setting, not an alert. */
+:root[data-theme-mode="light"]
+  :is(
+    .chat-controls__permission-label--full,
+    .chat-controls__permission-trigger--full .chat-controls__permission-icon
+  ) {
+  color: inherit;
+}
+
 .chat-controls__permission-option--selected {
   background: var(--chat-composer-menu-selected);
 }

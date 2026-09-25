@@ -55,6 +55,8 @@ export class SessionOrganizerController {
     position: "before" | "after";
   } | null = null;
   sessionListRemovalDrop = false;
+  /** Groups created empty in this tab stay listed until they get a session. */
+  readonly createdEmptySessionGroups = new Set<string>();
   private operationsLoad: Promise<SessionOrganizerOperations> | null = null;
 
   constructor(private readonly host: SessionOrganizerControllerHost) {}
@@ -457,7 +459,13 @@ export class SessionOrganizerController {
     if (result === "failed") {
       return this.sessionGroupFailure();
     }
-    return result === "stale" ? t("sessionsView.newGroupStale") : null;
+    if (result === "stale") {
+      return t("sessionsView.newGroupStale");
+    }
+    if (sessions.length === 0) {
+      this.createdEmptySessionGroups.add(name);
+    }
+    return null;
   }
 
   private sessionGroupFailure(): string {

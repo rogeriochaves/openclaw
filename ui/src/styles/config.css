@@ -389,7 +389,7 @@
 
 :root[data-theme-mode="light"] :is(.settings-theme-card--claw, .settings-accent-theme--claw) {
   --theme-chip-bg: #faf9f7;
-  --theme-chip-accent: #bd4531;
+  --theme-chip-accent: #2563eb;
   --theme-chip-accent-2: #0d9488;
 }
 
