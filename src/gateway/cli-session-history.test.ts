@@ -1164,6 +1164,91 @@ describe("cli session history", () => {
     expect(merged).toEqual([localMessage, importedMessage]);
   });
 
+  it("renders a multi-segment CLI reply once next to its imported progress rows", () => {
+    const meta = (externalId: string) => ({
+      importedFrom: "claude-cli",
+      cliSessionId: "session-1",
+      externalId,
+    });
+    const localUser = { role: "user", content: "find the event", timestamp: 1_000 };
+    const localMeta = { id: "local-aggregate", idempotencyKey: "cli-assistant:run-1" };
+    const localAggregate = {
+      role: "assistant",
+      content: [{ type: "text", text: "Found it. Checking the invite.\n\nIt is on 16 Oct." }],
+      stopReason: "stop",
+      timestamp: 9_500,
+      idempotencyKey: "cli-assistant:run-1",
+      __openclaw: localMeta,
+    };
+    const importedUser = { ...localUser, timestamp: 1_001, __openclaw: meta("native-user") };
+    const importedProgress = {
+      role: "assistant",
+      content: [{ type: "text", text: "Found it. Checking the invite." }],
+      stopReason: "tool_use",
+      timestamp: 3_000,
+      __openclaw: meta("native-progress"),
+    };
+    const importedTool = {
+      role: "assistant",
+      content: [
+        { type: "toolcall", id: "tool-1", name: "Bash", arguments: {} },
+        { type: "tool_result", tool_use_id: "tool-1", content: "invite" },
+      ],
+      stopReason: "tool_use",
+      timestamp: 5_000,
+      __openclaw: meta("native-tool"),
+    };
+    const importedFinal = {
+      role: "assistant",
+      content: [{ type: "text", text: "It is on 16 Oct." }],
+      stopReason: "end_turn",
+      timestamp: 9_000,
+      __openclaw: meta("native-final"),
+    };
+
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [localUser, localAggregate],
+      importedMessages: [importedUser, importedProgress, importedTool, importedFinal],
+    });
+
+    expect(merged).toEqual([
+      { ...localUser, __openclaw: meta("native-user") },
+      importedProgress,
+      importedTool,
+      {
+        ...localAggregate,
+        content: [{ type: "text", text: "It is on 16 Oct." }],
+        __openclaw: { ...localMeta, ...meta("native-final") },
+      },
+    ]);
+  });
+
+  it("keeps a local CLI reply intact when imported segments do not rebuild it", () => {
+    const localAggregate = {
+      role: "assistant",
+      content: [{ type: "text", text: "Checking.\n\nDone." }],
+      timestamp: 9_500,
+      idempotencyKey: "cli-assistant:run-1",
+    };
+    const importedMessages = ["Checking.", "Something else."].map((text, index) => ({
+      role: "assistant",
+      content: [{ type: "text", text }],
+      timestamp: 9_000 + index,
+      __openclaw: {
+        importedFrom: "claude-cli",
+        cliSessionId: "session-1",
+        externalId: `native-${index}`,
+      },
+    }));
+
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [localAggregate],
+      importedMessages,
+    });
+
+    expect(merged).toEqual([importedMessages[0], importedMessages[1], localAggregate]);
+  });
+
   it("retains mention-only imports near unrelated local image turns", () => {
     const timestamp = Date.parse("2026-03-26T16:29:54.500Z");
     const importedMessage = {
