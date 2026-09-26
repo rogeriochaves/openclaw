@@ -95,7 +95,6 @@ export function createApplicationUpdateOverlays(
   let updateHistory: UpdateHistory = { kind: "unknown" };
   let updateAttempt: UpdateAdmissionAttempt | null = null;
   let currentFailure: UpdateFailureTriage | null = null;
-  let presentedFailure: UpdateFailureTriage | null = null;
 
   const updateFailureReporter = createUpdateFailureReportController({
     getClient: () => gateway.snapshot.client,
@@ -138,42 +137,6 @@ export function createApplicationUpdateOverlays(
     gateway.snapshot.phase === "connected" &&
     readGatewayOperatorAccess(gateway.snapshot).canAdmin;
 
-  function presentFailureTriage() {
-    const owned = currentFailure;
-    const scope = updateGatewayScope;
-    const profile = profileId;
-    if (
-      !owned ||
-      owned === presentedFailure ||
-      snapshot.updateRunning ||
-      snapshot.updateFailureReportBusy ||
-      snapshot.updateFailureReportNotice !== null ||
-      snapshot.updateReconciliationPending
-    ) {
-      return;
-    }
-    const isCurrent = () =>
-      !disposed &&
-      currentFailure === owned &&
-      gatewayCredentialScope(gateway.connection.gatewayUrl) === scope &&
-      (gateway.snapshot.selfUser?.id ?? null) === profile &&
-      readGatewayOperatorAccess(gateway.snapshot).canAdmin;
-    if (!isCurrent() || receipts.triaged(scope, profile, owned.id)) {
-      return;
-    }
-    presentedFailure = owned;
-    hooks.onUpdateFailure?.(owned, {
-      isCurrent,
-      admit: () =>
-        isCurrent() &&
-        gateway.snapshot.phase === "connected" &&
-        !snapshot.updateRunning &&
-        !snapshot.updateReconciliationPending &&
-        !receipts.triaged(scope, profile, owned.id) &&
-        receipts.recordTriage(scope, profile, owned.id),
-    });
-  }
-
   function publish() {
     const campaign = snapshot.updateSchedule?.campaign;
     const applying =
@@ -202,7 +165,6 @@ export function createApplicationUpdateOverlays(
               : null,
     };
     onChange();
-    presentFailureTriage();
   }
 
   const publishError = (error: unknown, source?: "read") => {
