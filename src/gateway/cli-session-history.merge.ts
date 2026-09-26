@@ -15,6 +15,7 @@ import { isOpenClawCliImageCachePath } from "../agents/embedded-agent-runner/run
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import { isImageMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
+import { projectCliAssistantAggregatesOntoFinalSegment } from "./cli-session-history.cli-aggregate.js";
 
 const DEDUPE_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
 
@@ -569,6 +570,12 @@ export function mergeImportedChatHistoryMessages(params: {
   const merged = params.localMessages.map((message, order) =>
     prepareComparableMessage(message, order, resolveImportedExternalIdentityKey(message)),
   );
+  const projectedAggregates = projectCliAssistantAggregatesOntoFinalSegment({
+    localEntries: merged,
+    importedMessages: params.importedMessages,
+    prepare: (message) => prepareComparableMessage(message, 0, undefined),
+    timestampWindowMs: DEDUPE_TIMESTAMP_WINDOW_MS,
+  });
   const exactExternalIdentityIndex = new Map<string, ComparableHistoryMessage>();
   const allMessageRoleTextIndex: RoleTextIndex = new Map();
   const identitylessRoleTextIndex: RoleTextIndex = new Map();
@@ -628,7 +635,7 @@ export function mergeImportedChatHistoryMessages(params: {
       consumedLocalCandidates.add(exactIdentityMatch);
     }
   }
-  let changed = false;
+  let changed = projectedAggregates;
   let expanded = false;
   let nextOrder = merged.length;
   for (const message of params.importedMessages) {
