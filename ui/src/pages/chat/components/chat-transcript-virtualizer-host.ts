@@ -40,6 +40,7 @@ import {
 import { renderChatTranscriptLayout, type TranscriptRow } from "./chat-transcript-layout.ts";
 import {
   createTranscriptOffsetState,
+  createTranscriptResizeAnchor,
   observeTranscriptOffset,
 } from "./chat-transcript-offset-observer.ts";
 import { activeTranscriptMessageId } from "./chat-transcript-position.ts";
@@ -218,6 +219,7 @@ export class ChatSessionVirtualizerHost implements ReactiveControllerHost, ChatT
   private rowIndexesByKey = new Map<string, number>();
   private messageRowKeysById: ReadonlyMap<string, string> = new Map();
   private readonly prependAnchor = new TranscriptPrependAnchor();
+  private readonly resizeAnchor = createTranscriptResizeAnchor(this.offsetState);
   private candidateMessageRowKeysById: ReadonlyMap<string, string> = new Map();
   private candidateMessageRowsByKey: ReadonlyMap<string, string> = new Map();
   private committedMessageRowsByKey: ReadonlyMap<string, string> = new Map();
@@ -293,7 +295,10 @@ export class ChatSessionVirtualizerHost implements ReactiveControllerHost, ChatT
           instance,
           callback,
         ),
-      measureElement: measureTranscriptRow,
+      measureElement: (element, entry, instance) => {
+        this.resizeAnchor.observeRow(element);
+        return measureTranscriptRow(element, entry, instance);
+      },
       rangeExtractor: (range) => this.extractAnchoredRange(range, this.rowIndexesByKey),
       // Virtual distance omits real padding, pinning readers ~80px up past scroll.ts's follow-lock.
       // scheduleCommittedChatScroll owns end-follow on content changes and source: "resize".
@@ -301,6 +306,7 @@ export class ChatSessionVirtualizerHost implements ReactiveControllerHost, ChatT
       scrollEndThreshold: -1,
       overscan: CHAT_TRANSCRIPT_OVERSCAN,
     });
+    this.resizeAnchor.attach(this.virtualizerController.getVirtualizer());
     this.scrollRestoreHost = {
       offsetState: this.offsetState,
       virtualizer: this.virtualizerController.getVirtualizer(),

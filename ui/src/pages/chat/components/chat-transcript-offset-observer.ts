@@ -3,6 +3,7 @@ import { isTranscriptScrollKey } from "../chat-scroll-input.ts";
 import { maxTranscriptScrollOffset } from "./chat-transcript-geometry.ts";
 import type { ChatTranscriptInteractionAnchor } from "./chat-transcript-interaction-anchor.ts";
 import type { TranscriptPrependAnchor } from "./chat-transcript-prepend-anchor.ts";
+import { TranscriptResizeAnchor } from "./chat-transcript-resize-anchor.ts";
 import {
   publishTranscriptScroll,
   type TranscriptScrollObservation,
@@ -21,6 +22,7 @@ type TranscriptOffsetState = {
   pendingInteractionAnchor: ChatTranscriptInteractionAnchor | null;
   syncNativeOffset: (() => void) | null;
   recordProgrammaticScroll: ((before: number, after: number) => void) | null;
+  recordReaderScroll: ((from: number) => void) | null;
 };
 
 /** Create the state shared by native input observation and transcript commands. */
@@ -34,6 +36,7 @@ export function createTranscriptOffsetState(): TranscriptOffsetState {
     pendingInteractionAnchor: null,
     syncNativeOffset: null,
     recordProgrammaticScroll: null,
+    recordReaderScroll: null,
   };
 }
 
@@ -46,6 +49,24 @@ type OffsetOwner = {
   requestUpdate(): void;
   onReaderScroll(towardEnd?: boolean): void;
 };
+
+/** Resize corrections write through the same maintenance path as TanStack. */
+export function createTranscriptResizeAnchor(state: TranscriptOffsetState): TranscriptResizeAnchor {
+  const anchor = new TranscriptResizeAnchor({
+    hasScrollCommand: () => state.scrollCommand !== null || state.pendingScrollOffset !== null,
+    interactionRow: () => state.pendingInteractionAnchor?.row ?? null,
+    writeOffset: (offset, instance) => {
+      instance.options.scrollToFn(
+        offset,
+        { adjustments: undefined, behavior: undefined },
+        instance,
+      );
+      instance.scrollOffset = instance.scrollElement?.scrollTop ?? offset;
+    },
+  });
+  state.recordReaderScroll = (from) => anchor.noteReaderScroll(from);
+  return anchor;
+}
 
 /** Observe native offsets and input with the transcript's touch and command lifecycle. */
 export function observeTranscriptOffset(
@@ -97,6 +118,9 @@ export function observeTranscriptOffset(
     const delta = offset - nativeOffset;
     nativeOffset = offset;
     const programmatic = owner.isProgrammaticScroll();
+    if (scrolling && delta !== 0 && !programmatic) {
+      owner.state.recordReaderScroll?.(offset - delta);
+    }
     if (scrolling && owner.state.maintenanceScrollOffset !== null) {
       owner.state.maintenanceScrollOffset = programmatic ? offset : null;
     }
