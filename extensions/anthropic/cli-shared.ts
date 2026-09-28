@@ -29,6 +29,14 @@ const CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_ARG =
 // installations on their established argv when the startup probe cannot prove it.
 const CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_MINIMUM_VERSION = "2.1.98";
 const CLAUDE_SETTINGS_ARG = "--settings";
+// Per-run policy env that must outrank the user settings `env` block.
+const CLAUDE_CLI_SETTINGS_ENV_KEYS = [
+  "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+  "CLAUDE_CODE_DISABLE_1M_CONTEXT",
+  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
+  "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS",
+  "MAX_THINKING_TOKENS",
+] as const;
 const CLAUDE_EFFORT_ARG = "--effort";
 const CLAUDE_BARE_ARG = "--bare";
 const CLAUDE_SAFE_MODE_ARG = "--safe-mode";
@@ -464,6 +472,60 @@ function resolveClaudeCliRestrictedExecutionArgs(
   return normalized;
 }
 
+/**
+ * Claude Code applies the user settings `env` block over its inherited process
+ * env, so a user-level CLAUDE_CODE_AUTO_COMPACT_WINDOW (or thinking/1M toggle)
+ * silently replaces the per-run values OpenClaw sets. Flag settings outrank
+ * user settings, and only the last `--settings` flag is read, so the run policy
+ * keys are merged into a single JSON `--settings` value.
+ */
+function applyClaudeCliSettingsEnv(
+  args: readonly string[],
+  env: Readonly<Record<string, string>> | undefined,
+): string[] {
+  const settingsEnv = Object.fromEntries(
+    CLAUDE_CLI_SETTINGS_ENV_KEYS.flatMap((key) => {
+      const value = env?.[key];
+      return value === undefined ? [] : [[key, value]];
+    }),
+  );
+  if (Object.keys(settingsEnv).length === 0) {
+    return [...args];
+  }
+  let settingsIndex = -1;
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === CLAUDE_SETTINGS_ARG) {
+      settingsIndex = i + 1;
+      i += 1;
+    } else if (args[i]?.startsWith(`${CLAUDE_SETTINGS_ARG}=`)) {
+      settingsIndex = i;
+    }
+  }
+  if (settingsIndex < 0) {
+    return [...args, CLAUDE_SETTINGS_ARG, JSON.stringify({ env: settingsEnv })];
+  }
+  const raw = args[settingsIndex] ?? "";
+  const inline = raw.startsWith(`${CLAUDE_SETTINGS_ARG}=`);
+  const value = inline ? raw.slice(CLAUDE_SETTINGS_ARG.length + 1) : raw;
+  let settings: unknown;
+  try {
+    settings = JSON.parse(value);
+  } catch {
+    // A settings file path stays authoritative; its owner controls its env.
+    return [...args];
+  }
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return [...args];
+  }
+  const record = settings as Record<string, unknown>;
+  const existingEnv =
+    record.env && typeof record.env === "object" && !Array.isArray(record.env) ? record.env : {};
+  const merged = JSON.stringify({ ...record, env: { ...existingEnv, ...settingsEnv } });
+  const next = [...args];
+  next[settingsIndex] = inline ? `${CLAUDE_SETTINGS_ARG}=${merged}` : merged;
+  return next;
+}
+
 /** Resolve final Claude CLI execution args for one backend invocation. */
 export function resolveClaudeCliExecutionArgs(
   context: CliBackendResolveExecutionArgsContext,
@@ -485,9 +547,13 @@ export function resolveClaudeCliExecutionArgs(
         return action satisfies never;
     }
   })();
-  const resolvedArgs = context.toolAvailability
+  const restrictedArgs = context.toolAvailability
     ? resolveClaudeCliRestrictedExecutionArgs(executionArgs, context.toolAvailability)
     : executionArgs;
+  const resolvedArgs =
+    context.executionMode === "side-question"
+      ? restrictedArgs
+      : applyClaudeCliSettingsEnv(restrictedArgs, context.env);
   return options.excludeDynamicSystemPromptSections && context.executionMode !== "side-question"
     ? [...resolvedArgs, CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_ARG]
     : resolvedArgs;

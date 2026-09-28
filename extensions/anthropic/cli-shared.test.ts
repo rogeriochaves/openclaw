@@ -354,6 +354,44 @@ describe("resolveClaudeCliExecutionArgs", () => {
     ).toEqual(baseArgs);
   });
 
+  it("projects run policy env into flag settings so user settings env cannot override it", () => {
+    const env = {
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "380000",
+      MAX_THINKING_TOKENS: "2048",
+      ANTHROPIC_API_KEY: "sk-secret",
+    };
+    const plain = resolveClaudeCliExecutionArgs({
+      workspaceDir: "/tmp",
+      provider: "claude-cli",
+      modelId: "claude-opus-4-8",
+      useResume: false,
+      baseArgs: ["-p", "--setting-sources", "user"],
+      env,
+    });
+    expect(plain.slice(0, 3)).toEqual(["-p", "--setting-sources", "user"]);
+    expect(plain[3]).toBe("--settings");
+    expect(JSON.parse(plain[4]!)).toEqual({
+      env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "380000", MAX_THINKING_TOKENS: "2048" },
+    });
+
+    const restricted = resolveClaudeCliExecutionArgs({
+      workspaceDir: "/tmp",
+      provider: "claude-cli",
+      modelId: "claude-opus-4-8",
+      useResume: false,
+      baseArgs: ["-p"],
+      toolAvailability: { native: ["Bash"], openClaw: [] },
+      env,
+    });
+    expect(restricted.filter((arg) => arg === "--settings")).toHaveLength(1);
+    const settings = JSON.parse(restricted[restricted.indexOf("--settings") + 1]!);
+    expect(settings).toMatchObject({
+      disableAllHooks: true,
+      env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "380000", MAX_THINKING_TOKENS: "2048" },
+    });
+    expect(restricted.join(" ")).not.toContain("sk-secret");
+  });
+
   it("denies every configured MCP tool when the allowlist is empty", () => {
     expect(
       resolveClaudeCliExecutionArgs({

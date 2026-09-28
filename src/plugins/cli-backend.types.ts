@@ -282,6 +282,12 @@ export type CliBackendResolveExecutionArgsContext = {
   workspaceDir: string;
   provider: string;
   modelId: string;
+  /**
+   * Process env prepared for this run. Backends may copy their own policy keys
+   * into native settings args; argv is visible to other local processes, so
+   * credentials must never be projected from here.
+   */
+  env?: Readonly<Record<string, string>>;
   authProfileId?: string;
   thinkingLevel?: CliBackendThinkingLevel;
   /** Effective fast mode at spawn, after queue admission and backend preparation. */
