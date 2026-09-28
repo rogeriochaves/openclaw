@@ -494,6 +494,7 @@ export async function executePreparedCliRun(
           workspaceDir: context.workspaceDir,
           provider: params.provider,
           modelId: context.modelId,
+          ...(context.preparedBackend.env ? { env: context.preparedBackend.env } : {}),
           authProfileId: context.effectiveAuthProfileId,
           thinkingLevel:
             params.thinkLevel === "ultra" ? context.providerThinkingLevel : params.thinkLevel,
