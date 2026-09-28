@@ -1,4 +1,5 @@
 // Gateway methods expose session files and workspace browsing.
+import path from "node:path";
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
@@ -11,8 +12,11 @@ import {
   validateSessionsFilesListParams,
   validateSessionsFilesSetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { listAgentIds, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { getAgentWorkspaceAccess } from "../../agents/workspace-access.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
+import { isPathInside } from "../../infra/path-guards.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { sqliteMessageEventWithSeq } from "../session-transcript-entry-message.js";
@@ -301,7 +305,10 @@ async function loadSessionFiles(params: {
   agentId?: string;
   context: GatewayRequestContext;
 }): Promise<
-  LoadedSessionFiles & { repository?: ReturnType<typeof resolveRepositoryWorkspaceAccess> }
+  LoadedSessionFiles & {
+    repository?: ReturnType<typeof resolveRepositoryWorkspaceAccess>;
+    execNode?: boolean;
+  }
 > {
   const loaded = loadSessionFileRoot(params);
   const { storePath, entry, canonicalKey, agentId } = loaded;
@@ -345,6 +352,7 @@ async function loadSessionFiles(params: {
   );
   return {
     repository,
+    execNode: Boolean(entry.execNode),
     root: loaded.root,
     fileRoot: loaded.fileRoot,
     diffCwd: loaded.diffCwd,
@@ -355,6 +363,39 @@ async function loadSessionFiles(params: {
       return a.path.localeCompare(b.path);
     }),
   };
+}
+
+/**
+ * Agents link files by absolute path, and those paths can point into another
+ * agent's workspace on this Gateway. Reads there are already open to the same
+ * caller through that agent's own sessions, so a link that misses the session
+ * root resolves against the local agent workspace that contains it. Remote
+ * workspaces stay excluded because their files are not on this disk.
+ */
+function resolveOtherAgentWorkspaceRoot(
+  cfg: OpenClawConfig,
+  filePath: string,
+  sessionRoot: string,
+): string | undefined {
+  if (!path.isAbsolute(filePath)) {
+    return undefined;
+  }
+  const target = path.resolve(filePath);
+  if (isPathInside(path.resolve(sessionRoot), target)) {
+    return undefined;
+  }
+  let match: string | undefined;
+  for (const agentId of listAgentIds(cfg)) {
+    const workspaceDir = path.resolve(resolveAgentWorkspaceDir(cfg, agentId));
+    if (
+      isPathInside(workspaceDir, target) &&
+      !getAgentWorkspaceAccess(workspaceDir) &&
+      (!match || workspaceDir.length > match.length)
+    ) {
+      match = workspaceDir;
+    }
+  }
+  return match;
 }
 
 function respondSessionFileNotFound(respond: RespondFn, filePath: string) {
@@ -463,13 +504,29 @@ export const sessionsFilesHandlers: GatewayRequestHandlers = {
       const loaded = await loadSessionFiles({ ...params, agentId, context });
       read?.assertCurrent();
       const request = { files: loaded.files, path: params.path };
-      const result =
+      let result =
         loaded.repository?.kind === "stored"
           ? await getRepositoryArtifact(loaded.repository, params.path)
           : loaded.repository
             ? await loaded.repository.inspect("get", request)
             : await getSessionWorkspaceFile({ ...loaded, ...request });
       read?.assertCurrent();
+      const otherRoot =
+        (!result.file || result.file.missing) &&
+        !loaded.repository &&
+        !loaded.execNode &&
+        loaded.root
+          ? resolveOtherAgentWorkspaceRoot(context.getRuntimeConfig(), params.path, loaded.root)
+          : undefined;
+      if (otherRoot) {
+        result = await getSessionWorkspaceFile({
+          root: otherRoot,
+          fileRoot: otherRoot,
+          files: [],
+          path: params.path,
+        });
+        read?.assertCurrent();
+      }
       if (!result.file || result.file.missing) {
         respondSessionFileNotFound(respond, params.path);
         return;
@@ -510,7 +567,7 @@ export const sessionsFilesHandlers: GatewayRequestHandlers = {
       throw new Error("Start this cloud session before editing its repository files.");
     }
     const authorize = () => sessionMutationAuthorization?.assertCurrent();
-    const update = repository
+    let update = repository
       ? await repository.inspect(
           "set",
           { path: params.path, content: params.content, expectedHash: params.expectedHash },
@@ -522,6 +579,18 @@ export const sessionsFilesHandlers: GatewayRequestHandlers = {
           fileRoot: loaded.fileRoot,
           assertCurrent: authorize,
         });
+    const otherRoot =
+      update.status === "missing" && !repository && !loaded.entry.execNode && loaded.root
+        ? resolveOtherAgentWorkspaceRoot(context.getRuntimeConfig(), params.path, loaded.root)
+        : undefined;
+    if (otherRoot) {
+      update = await setSessionWorkspaceFile({
+        ...params,
+        root: otherRoot,
+        fileRoot: otherRoot,
+        assertCurrent: authorize,
+      });
+    }
     if (update.status === "missing") {
       respondSessionFileNotFound(respond, params.path);
       return;

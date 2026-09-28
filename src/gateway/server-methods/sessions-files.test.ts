@@ -584,6 +584,84 @@ describe("sessions.files RPC handlers", () => {
     }
   });
 
+  describe("absolute links into another agent workspace", () => {
+    let supportRoot: string;
+    const mockSession = (entry: Record<string, unknown>) =>
+      hoisted.loadSessionEntry.mockReturnValue({
+        canonicalKey: "agent:main:main",
+        cfg: {},
+        storePath: path.join(workspaceRoot, ".sessions.json"),
+        entry,
+      });
+    const twoAgents = {
+      getRuntimeConfig: () => ({
+        agents: { list: [{ id: "main", default: true }, { id: "support" }] },
+      }),
+    };
+
+    beforeEach(() => {
+      supportRoot = fs.mkdtempSync(path.join(path.dirname(workspaceRoot), "support-"));
+      writeWorkspaceFile(supportRoot, "PLAN.md", "# Plan\n");
+      hoisted.resolveAgentWorkspaceDir.mockImplementation((_cfg: unknown, agentId: string) =>
+        agentId === "support" ? supportRoot : workspaceRoot,
+      );
+      mockSession({ sessionId: "sess-main", sessionFile: "sess-main.jsonl" });
+    });
+
+    afterEach(() => {
+      removeWorkspaceFixture(supportRoot);
+    });
+
+    it("previews and saves the file from the workspace that contains it", async () => {
+      const planPath = path.join(supportRoot, "PLAN.md");
+
+      const preview = expectOkPayload(
+        await invokeSessionFilesHandler(
+          "sessions.files.get",
+          { sessionKey: "agent:main:main", path: planPath },
+          twoAgents,
+        ),
+      );
+      expect(preview.root).toBe(supportRoot);
+      expect(preview.file).toMatchObject({ path: "PLAN.md", missing: false, content: "# Plan\n" });
+
+      expectOkPayload(
+        await invokeSessionFilesHandler(
+          "sessions.files.set",
+          {
+            sessionKey: "agent:main:main",
+            path: planPath,
+            content: "# Plan v2\n",
+            expectedHash: hashContent("# Plan\n"),
+          },
+          twoAgents,
+        ),
+      );
+      expect(fs.readFileSync(planPath, "utf8")).toBe("# Plan v2\n");
+    });
+
+    it("keeps relative paths and exec-node sessions on the session workspace", async () => {
+      const relative = expectError(
+        await invokeSessionFilesHandler(
+          "sessions.files.get",
+          { sessionKey: "agent:main:main", path: `../${path.basename(supportRoot)}/PLAN.md` },
+          twoAgents,
+        ),
+      );
+      expect(relative.details).toMatchObject({ type: "session_file_not_found" });
+
+      mockSession({ sessionId: "sess-main", sessionFile: "sess-main.jsonl", execNode: "node-1" });
+      const execNode = expectError(
+        await invokeSessionFilesHandler(
+          "sessions.files.get",
+          { sessionKey: "agent:main:main", path: path.join(supportRoot, "PLAN.md") },
+          twoAgents,
+        ),
+      );
+      expect(execNode.details).toMatchObject({ type: "session_file_not_found" });
+    });
+  });
+
   it("does not follow workspace symlinks for file previews", async () => {
     const outsidePath = path.join(os.tmpdir(), `openclaw-linked-${Date.now()}.txt`);
     fs.writeFileSync(outsidePath, "linked outside\n", "utf8");
