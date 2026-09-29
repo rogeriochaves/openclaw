@@ -12,6 +12,7 @@ import {
 } from "../agents/tools/gateway-caller-context.js";
 import { getRuntimeConfig } from "../config/io.js";
 import { resolveSessionEntryAccessTarget } from "../config/sessions/session-accessor.js";
+import { runOutsideSessionTranscriptScopes } from "../config/sessions/session-transcript-read-fence.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { isRequestBodyLimitError, readRequestBodyWithLimit } from "../infra/http-body.js";
 import {
@@ -552,10 +553,12 @@ export async function ensureMcpLoopbackServer(port = 0): Promise<void> {
   }
   if (!activeMcpLoopbackServerPromise) {
     // The listener owns its context until Gateway close; callers own only requests.
-    // The first turn's work and plugin generation can retire before later requests.
+    // The first turn's work, plugin generation and transcript fence can retire before later requests.
     const work = new AsyncWorkScope();
     activeMcpLoopbackServerPromise = runOutsidePluginRuntimeGenerationScope(() =>
-      runOutsideGatewayRootWorkAdmission(() => work.run(() => startMcpLoopbackServer(port, work))),
+      runOutsideGatewayRootWorkAdmission(() =>
+        runOutsideSessionTranscriptScopes(() => work.run(() => startMcpLoopbackServer(port, work))),
+      ),
     )
       .then((close) => {
         closeActiveMcpLoopbackServer = close;
