@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import {
+  resolveSessionTranscriptReadFence,
+  runWithSessionTranscriptReadFence,
+} from "../config/sessions/session-transcript-read-fence.js";
+import {
   isGatewaySubordinateWorkAdmissionClosed,
   tryBeginGatewayRootWorkAdmission,
 } from "../process/gateway-work-admission.js";
+import type { UserTurnTranscriptAdmissionReceipt } from "../sessions/user-turn-transcript.types.js";
 import { AsyncWorkScope, getAsyncWorkSignal, trackAsyncWork } from "../shared/async-work-scope.js";
 
 const { execute, resolveTools } = vi.hoisted(() => ({ execute: vi.fn(), resolveTools: vi.fn() }));
@@ -151,5 +156,20 @@ describe("MCP HTTP work ownership", () => {
       await cleanup;
       await closing;
     }
+  });
+
+  it("does not serve later requests under the starting turn's transcript read fence", async () => {
+    const turn = { agentId: "content", sessionId: "creator-session" };
+    const fences: unknown[] = [];
+    execute.mockImplementation(() => {
+      fences.push(resolveSessionTranscriptReadFence(turn));
+      return completed;
+    });
+    await runWithSessionTranscriptReadFence(
+      { ...turn, entryId: "creator-user-message" } as UserTurnTranscriptAdmissionReceipt,
+      () => ensureMcpLoopbackServer(),
+    );
+    expect(await callTool()).toMatchObject({ result: { isError: false } });
+    expect(fences).toEqual([undefined]);
   });
 });

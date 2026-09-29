@@ -98,6 +98,11 @@ export function runWithSessionTranscriptReadFence<T>(
   return receipt ? transcriptReadFenceStorage.run(receipt, run) : run();
 }
 
+/** Process-owned listeners outlive the turn that starts them, so they must not keep its transcript scopes. */
+export function runOutsideSessionTranscriptScopes<T>(run: () => T): T {
+  return transcriptReadFenceStorage.exit(() => questionAnswerStorage.exit(run));
+}
+
 export function withSessionContextAdmission<T>(
   target: SessionTranscriptRuntimeTarget,
   admission: UserTurnTranscriptAdmissionReceipt | undefined,
