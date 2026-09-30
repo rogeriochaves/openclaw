@@ -6,7 +6,8 @@ import {
 } from "./session-observer-model.js";
 import type { SessionObserverDeps, SessionObserverState } from "./session-observer-model.js";
 
-const MODEL_TIMEOUT_MS = 10_000;
+// CLI-backed utility models (for example claude-cli Haiku) take 9-16s per call.
+export const SESSION_OBSERVER_MODEL_TIMEOUT_MS = 30_000;
 
 type PrepareModel = NonNullable<SessionObserverDeps["prepareModel"]>;
 type CompleteModel = NonNullable<SessionObserverDeps["completeModel"]>;
@@ -46,7 +47,10 @@ export function createSessionObserverCompletion(params: {
   return async (state: SessionObserverState, notes: readonly string[]) => {
     const controller = new AbortController();
     state.activeController = controller;
-    const timeout = params.setTimeoutFn(() => controller.abort(), MODEL_TIMEOUT_MS);
+    const timeout = params.setTimeoutFn(
+      () => controller.abort(),
+      SESSION_OBSERVER_MODEL_TIMEOUT_MS,
+    );
     const aborted = new Promise<never>((_resolve, reject) => {
       controller.signal.addEventListener(
         "abort",
@@ -69,7 +73,7 @@ export function createSessionObserverCompletion(params: {
             config: params.getConfig(),
             systemPrompt: SESSION_OBSERVER_SYSTEM_PROMPT,
             prompt: buildSessionObserverPrompt(state, notes),
-            timeoutMs: MODEL_TIMEOUT_MS,
+            timeoutMs: SESSION_OBSERVER_MODEL_TIMEOUT_MS,
             abortSignal: controller.signal,
             streamParams: {
               maxTokens: SESSION_OBSERVER_MODEL_MAX_TOKENS,
