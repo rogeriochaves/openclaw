@@ -186,7 +186,11 @@ export type ChatThreadProps = ChatSendStatusActions & {
   typingActors?: readonly ChatTypingActorView[];
   typingOverflow?: ChatTypingOverflow;
   onOpenSidebar?: (content: SidebarContent) => void;
-  onOpenWorkspaceFile?: (target: { path: string; line?: number | null }) => void;
+  onOpenWorkspaceFile?: (target: {
+    path: string;
+    line?: number | null;
+    sessionKey?: string;
+  }) => void;
   onOpenSessionLink?: (target: SessionLinkTarget) => void;
   onNavigate?: (routeId: "cron", options: { search: string }) => void;
   onRequestOpenImage?: () => number;

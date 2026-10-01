@@ -1,6 +1,7 @@
 // Workspace file links share rendering across transcript and sidebar Markdown.
 import { describe, expect, it, vi } from "vitest";
 import { shortestFileLabels } from "./file-kind.ts";
+import { markdownFileLinkFromEvent } from "./markdown-file-links.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 
 function htmlFragment(html: string): HTMLElement {
@@ -10,6 +11,29 @@ function htmlFragment(html: string): HTMLElement {
 }
 
 describe("file links", () => {
+  it("carries the relaying session for links inside a forwarded message", () => {
+    const container = document.createElement("div");
+    container.innerHTML = `<div data-file-session-key="agent:content:main">${toSanitizedMarkdownHtml(
+      "see tmp/brochures/amendment.pdf",
+      { fileLinks: true },
+    )}</div>${toSanitizedMarkdownHtml("see tmp/own.pdf", { fileLinks: true })}`;
+    const [relayed, own] = container.querySelectorAll<HTMLAnchorElement>("a.markdown-file-link");
+    const targetFor = (link: HTMLAnchorElement | undefined) => {
+      let target: ReturnType<typeof markdownFileLinkFromEvent> = null;
+      link?.addEventListener("click", (event) => {
+        target = markdownFileLinkFromEvent(event);
+      });
+      link?.click();
+      return target;
+    };
+    expect(targetFor(relayed)).toEqual({
+      path: "tmp/brochures/amendment.pdf",
+      line: null,
+      sessionKey: "agent:content:main",
+    });
+    expect(targetFor(own)).toEqual({ path: "tmp/own.pdf", line: null });
+  });
+
   it("links multi-segment paths only when enabled", () => {
     const enabled = htmlFragment(
       toSanitizedMarkdownHtml("see src/lib/foo.ts for details", { fileLinks: true }),
