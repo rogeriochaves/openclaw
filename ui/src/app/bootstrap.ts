@@ -76,6 +76,7 @@ import {
   saveSettings,
 } from "./settings.ts";
 import { createSidebarAttentionStore } from "./sidebar-attention-store.ts";
+import { startStandaloneDownloadRouting } from "./standalone-download-routing.ts";
 import { createStartupLifecycle, type StartupStep } from "./startup-lifecycle.ts";
 import {
   normalizeLegacyTerminalViewLocation,
@@ -319,6 +320,7 @@ export function bootstrapApplication(): ApplicationRuntime {
   const navigation = createApplicationNavigationPreferences(settings);
   const nativeChatDrafts = createNativeChatDrafts();
   const linkReaderRouting = startLinkReaderRouting(() => gateway.snapshot);
+  startStandaloneDownloadRouting({ signal: startupLifecycle.signal });
   const nativeLinkRouting = startNativeLinkRouting({
     signal: startupLifecycle.signal,
     canPresentBrowserPanel: () => {
