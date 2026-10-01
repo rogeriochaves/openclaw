@@ -46,7 +46,10 @@ import {
 import { renderMessageVideoPreview } from "./chat-message-video-preview.ts";
 import { isSentPastedTextAttachment } from "./chat-pasted-text.ts";
 import { isSentCommentAttachment } from "./chat-sent-comments.ts";
-import type { AttachmentSidebarState } from "./chat-sidebar-content-types.ts";
+import type {
+  AttachmentSidebarRuntime,
+  AttachmentSidebarState,
+} from "./chat-sidebar-content-types.ts";
 import type { SidebarContent } from "./chat-sidebar.ts";
 
 type OmittedMediaItem = Extract<MessageContentItem, { type: "omitted_media" }>;
@@ -397,6 +400,28 @@ function resolveAttachmentSource(
   };
 }
 
+/** Resolves a live attachment source for the sidebar, rechecking access on every render. */
+export function resolveAttachmentSidebarSource(
+  attachment: AttachmentItem["attachment"],
+  onRequestUpdate: () => void,
+  runtime: AttachmentSidebarRuntime,
+): AttachmentSidebarState {
+  const next = resolveAttachmentSource(attachment, { ...runtime, onRequestUpdate });
+  if (next.status === "available") {
+    return { status: "ready", ...next.source };
+  }
+  if (next.status === "checking") {
+    return { status: "pending" };
+  }
+  return next.error
+    ? {
+        status: "error",
+        reason: next.reason ?? t("chat.attachments.unavailable"),
+        onRetry: next.onRetry,
+      }
+    : { status: "unavailable", onRetry: next.onRetry };
+}
+
 export function renderAssistantAttachments(
   attachments: AssistantAttachmentItem[],
   options: ImageRenderOptions,
@@ -544,25 +569,8 @@ export function renderMessageAttachment(
             voiceNote: attachment.isVoiceNote === true,
             ...(hasLiveSidebarSource
               ? {
-                  resolveSource: (sidebarUpdate, runtime): AttachmentSidebarState => {
-                    const next = resolveAttachmentSource(attachment, {
-                      ...runtime,
-                      onRequestUpdate: sidebarUpdate,
-                    });
-                    if (next.status === "available") {
-                      return { status: "ready", ...next.source };
-                    }
-                    if (next.status === "checking") {
-                      return { status: "pending" };
-                    }
-                    return next.error
-                      ? {
-                          status: "error",
-                          reason: next.reason ?? t("chat.attachments.unavailable"),
-                          onRetry: next.onRetry,
-                        }
-                      : { status: "unavailable", onRetry: next.onRetry };
-                  },
+                  resolveSource: (sidebarUpdate, runtime) =>
+                    resolveAttachmentSidebarSource(attachment, sidebarUpdate, runtime),
                 }
               : {}),
           })

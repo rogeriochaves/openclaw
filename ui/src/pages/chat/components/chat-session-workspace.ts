@@ -8,7 +8,9 @@ import { patchSettings, type ChatWorkspaceDock } from "../../../app/settings.ts"
 import { t } from "../../../i18n/index.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { isGatewayMethodAdvertised } from "../../../lib/gateway-methods.ts";
+import { parseAgentSessionKey } from "../../../lib/sessions/session-key.ts";
 import { sessionWorkspaceFileKey } from "../../../lib/sessions/workspace.ts";
+import { resolveAttachmentSidebarSource } from "./chat-message-attachments.ts";
 import { openWorkspaceItem } from "./chat-session-workspace-preview.ts";
 import {
   clearWorkspaceTimer,
@@ -104,6 +106,55 @@ function unsupportedFileSidebarContent(
     kind: "markdown",
     content,
     rawText: content,
+  };
+}
+
+function attachmentKindForMimeType(mimeType: string | undefined) {
+  const normalized = mimeType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  for (const kind of ["image", "audio", "video"] as const) {
+    if (normalized.startsWith(`${kind}/`)) {
+      return kind;
+    }
+  }
+  return "document" as const;
+}
+
+/**
+ * Binary workspace files stream through the same access-checked media route as
+ * local chat attachments, so PDFs get the bounded preview and other files a download.
+ */
+function binaryFileSidebarContent(
+  file: SessionWorkspaceGetResult["file"],
+  root: string | undefined,
+  fallbackPath: string,
+  name: string,
+  owner: { sessionKey: string; agentId?: string },
+): SidebarContent {
+  const filePath = file.workspacePath || file.path || fallbackPath;
+  if (!root) {
+    return unsupportedFileSidebarContent(file, fallbackPath);
+  }
+  const attachment = {
+    url: workspaceBrowserFilePath(root, filePath),
+    kind: attachmentKindForMimeType(file.mimeType),
+    label: name,
+    ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+    ...(typeof file.size === "number" ? { sizeBytes: file.size } : {}),
+  };
+  return {
+    kind: "attachment",
+    attachmentKind: attachment.kind,
+    title: name,
+    mimeType: file.mimeType ?? null,
+    sizeBytes: attachment.sizeBytes,
+    sourceIdentity: attachment.url,
+    rawText: filePath,
+    resolveSource: (onRequestUpdate, runtime) =>
+      resolveAttachmentSidebarSource(attachment, onRequestUpdate, {
+        ...runtime,
+        sessionKey: owner.sessionKey,
+        agentId: owner.agentId,
+      }),
   };
 }
 
@@ -204,16 +255,23 @@ function openFile(
   state: SessionWorkspaceHost,
   workspace: SessionWorkspaceState,
   path: string,
-  opts: { line?: number | null; requestPath?: string } = {},
+  opts: { line?: number | null; requestPath?: string; sessionKey?: string } = {},
 ) {
   const requestPath = opts.requestPath ?? path;
+  // Relayed messages name files relative to the sending session's workspace.
+  const foreignSessionKey =
+    opts.sessionKey && opts.sessionKey !== workspace.sessionKey ? opts.sessionKey : undefined;
+  const fileSessionKey = foreignSessionKey ?? workspace.sessionKey;
+  const fileAgentId = foreignSessionKey
+    ? parseAgentSessionKey(foreignSessionKey)?.agentId
+    : workspace.agentId;
   openWorkspaceItem(
     state,
     workspace,
-    `file:${requestPath}`,
+    foreignSessionKey ? `file:${foreignSessionKey}\u0000${requestPath}` : `file:${requestPath}`,
     () =>
-      state.sessions.getFile(workspace.sessionKey, requestPath, {
-        agentId: workspace.agentId,
+      state.sessions.getFile(fileSessionKey, requestPath, {
+        agentId: fileAgentId,
       }),
     (result) => {
       const file = result.file;
@@ -239,7 +297,10 @@ function openFile(
         };
       }
       if (file.previewKind === "unsupported") {
-        return unsupportedFileSidebarContent(file, path);
+        return binaryFileSidebarContent(file, result.root, path, name, {
+          sessionKey: result.sessionKey,
+          agentId: fileAgentId,
+        });
       }
       // Missing previewKind is the pre-image-preview Gateway contract.
       if (
@@ -266,7 +327,7 @@ function openFile(
                   requestPath,
                   content,
                   {
-                    agentId: workspace.agentId,
+                    agentId: fileAgentId,
                     expectedHash,
                   },
                 );
@@ -304,7 +365,7 @@ function openFile(
             },
             fetchLatest: async () => {
               const latest = await state.sessions.getFile(result.sessionKey, requestPath, {
-                agentId: workspace.agentId,
+                agentId: fileAgentId,
               });
               const latestFile = latest?.file;
               if (
@@ -360,9 +421,12 @@ function openFile(
 
 export function openSessionWorkspaceFile(
   state: SessionWorkspaceHost,
-  target: { path: string; line?: number | null },
+  target: { path: string; line?: number | null; sessionKey?: string },
 ) {
-  openFile(state, getSessionWorkspace(state), target.path, { line: target.line });
+  openFile(state, getSessionWorkspace(state), target.path, {
+    line: target.line,
+    sessionKey: target.sessionKey,
+  });
 }
 
 function toggleSessionWorkspace(state: SessionWorkspaceHost) {

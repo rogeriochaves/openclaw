@@ -173,7 +173,11 @@ export type ChatThreadProps = ChatSendStatusActions & {
   realtimeTalkConversation?: RealtimeTalkConversationEntry[];
   typingActors?: readonly { id: string; label: string; preview?: string }[];
   onOpenSidebar?: (content: SidebarContent) => void;
-  onOpenWorkspaceFile?: (target: { path: string; line?: number | null }) => void;
+  onOpenWorkspaceFile?: (target: {
+    path: string;
+    line?: number | null;
+    sessionKey?: string;
+  }) => void;
   onOpenSessionLink?: (target: SessionLinkTarget) => void;
   onRequestOpenImage?: () => number;
   onOpenImage?: (item: ImageLightboxItem, requestVersion?: number) => void;

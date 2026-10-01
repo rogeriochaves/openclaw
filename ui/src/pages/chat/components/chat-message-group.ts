@@ -591,6 +591,7 @@ export function renderMessageGroup(group: MessageGroup, opts: RenderMessageGroup
       }${senderHue === null ? "" : " chat-group--sender-tint"}"
       style=${senderHue === null ? nothing : `--chat-sender-hue: ${senderHue}`}
       data-chat-row-key=${group.key}
+      data-file-session-key=${forwardedSource && sourceSessionKey ? sourceSessionKey : nothing}
     >
       ${inlineUserAvatar ? nothing : avatar}
       <div class="chat-group-messages">
