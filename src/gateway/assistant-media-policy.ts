@@ -1,7 +1,10 @@
+import path from "node:path";
 import { isCloudWorkerPlacementState } from "../../packages/gateway-protocol/src/schema/session-placement-state.js";
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
+import { listAgentIds, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveSessionPermissionCoreToolPolicy } from "../agents/session-permission-exec-mode.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../agents/tool-fs-policy.js";
+import { getAgentWorkspaceAccess } from "../agents/workspace-access.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { getAgentScopedMediaLocalRoots, getDefaultMediaLocalRoots } from "../media/local-roots.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
@@ -131,6 +134,16 @@ export function resolveAssistantMediaPolicy(params: {
   // Full Access retains established agent-workspace downloads alongside the selected project.
   if (sessionRoot && !localRoots.includes(sessionRoot)) {
     localRoots.push(sessionRoot);
+  }
+  // Chat links can name files in another local agent's workspace. sessions.files.get
+  // already opens those for the same operator, so full-access sessions read their bytes too.
+  if (session && !remote && !workspaceOnly) {
+    for (const otherAgentId of listAgentIds(config)) {
+      const workspaceDir = path.resolve(resolveAgentWorkspaceDir(config, otherAgentId));
+      if (!localRoots.includes(workspaceDir) && !getAgentWorkspaceAccess(workspaceDir)) {
+        localRoots.push(workspaceDir);
+      }
+    }
   }
   // Cloud placement owns its filesystem independently of the session exec-node setting.
   const placement = session
