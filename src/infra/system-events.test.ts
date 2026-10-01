@@ -66,6 +66,31 @@ describe("system events (session routing)", () => {
     vi.useRealTimers();
   });
 
+  it("drops routine WhatsApp reconnect events from plugins and keeps actionable ones", () => {
+    const sessionKey = "agent:main:main";
+    for (const text of [
+      "WhatsApp gateway connected.",
+      "WhatsApp gateway connected as +15550001111.",
+      "WhatsApp gateway disconnected (status 408)",
+      "WhatsApp gateway disconnected (status 428)",
+      "WhatsApp gateway disconnected (status 499)",
+      "WhatsApp gateway disconnected (status 503)",
+      "WhatsApp gateway disconnected (status 515)",
+    ]) {
+      expect(enqueueSdkSystemEvent(text, { sessionKey })).toBe(false);
+    }
+    for (const text of [
+      "WhatsApp gateway disconnected (status 401)",
+      "WhatsApp gateway disconnected (status 440)",
+    ]) {
+      expect(enqueueSdkSystemEvent(text, { sessionKey })).toBe(true);
+    }
+    expect(peekSdkSystemEventEntries(sessionKey).map((event) => event.text)).toEqual([
+      "WhatsApp gateway disconnected (status 401)",
+      "WhatsApp gateway disconnected (status 440)",
+    ]);
+  });
+
   it("does not leak session-scoped events into main", async () => {
     enqueueSystemEvent("Discord reaction added: ✅", {
       sessionKey: "agent:main:discord:group:123",

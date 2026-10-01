@@ -23,10 +23,16 @@ function resolveSystemEventSessionKey(sessionKey: string, agentId?: string): str
   );
 }
 
+// Fork-only: routine WhatsApp reconnects would wake the main session on every
+// transport blip. Drop once a WhatsApp plugin release contains openclaw#162535.
+const ROUTINE_WHATSAPP_RECONNECT_EVENT =
+  /^WhatsApp gateway (connected( as .*)?\.|disconnected \(status (408|428|499|500|503|515)\))$/;
+
 export const enqueueSystemEventFromSdk = (
   text: string,
   { agentId, ...options }: Parameters<typeof events.enqueueSystemEvent>[1] & { agentId?: string },
 ) =>
+  !ROUTINE_WHATSAPP_RECONNECT_EVENT.test(text.trim()) &&
   events.enqueueSystemEvent(text, {
     ...options,
     sessionKey: resolveSystemEventSessionKey(options.sessionKey, agentId),
