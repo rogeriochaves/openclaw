@@ -14,6 +14,7 @@ import { stripCliSessionDriftNote } from "../agents/cli-session.js";
 import { isOpenClawCliImageCachePath } from "../agents/embedded-agent-runner/run/images.media-refs.js";
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import { isImageMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
+import { readInterSessionPromptEnvelope } from "../sessions/input-provenance.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { projectCliAssistantAggregatesOntoFinalSegment } from "./cli-session-history.cli-aggregate.js";
 
@@ -27,7 +28,7 @@ type ComparableHistoryMessage = {
   cliImageTurnKey?: string;
   role?: string;
   text?: string;
-  driftNoteText?: string;
+  undecoratedText?: string;
   timestamp?: number;
 };
 
@@ -76,6 +77,32 @@ function stripTrailingCliImageMentions(text: string): {
     : { text: lines.slice(0, end).join("\n").trimEnd(), stripped: true };
 }
 
+// Some local inter-session rows store the routed text without the envelope the
+// CLI received, so both sides compare the text after it.
+function stripInterSessionPromptEnvelope(text: string): string {
+  return text.slice(readInterSessionPromptEnvelope(text)?.length ?? 0);
+}
+
+// Queued system events reach the CLI as a block of `System:` lines above the
+// prompt, separated by a blank line. The local row stores only the prompt.
+function stripLeadingSystemEventLines(text: string): string {
+  const lines = text.replace(/^\n+/u, "").split("\n");
+  let end = 0;
+  while (end < lines.length && (lines[end] === "System:" || lines[end]?.startsWith("System: "))) {
+    end += 1;
+  }
+  if (end === 0 || (end < lines.length && lines[end] !== "")) {
+    return text;
+  }
+  return lines.slice(end).join("\n");
+}
+
+// Compare-only view of an imported prompt without the context OpenClaw added
+// around the user's text before handing it to the CLI.
+function stripCliPromptDecorations(text: string): string {
+  return stripLeadingSystemEventLines(stripCliSessionDriftNote(text));
+}
+
 function isClaudeCliImportedUserMessage(message: unknown, role: string | undefined): boolean {
   if (role !== "user") {
     return false;
@@ -91,7 +118,7 @@ function extractComparableText(
   hasCliImageMentions: boolean;
   cliImageTurnKey?: string;
   text?: string;
-  driftNoteText?: string;
+  undecoratedText?: string;
 } {
   if (!message || typeof message !== "object") {
     return { hasCliImageMentions: false };
@@ -130,15 +157,15 @@ function extractComparableText(
     : { text: joined, stripped: false };
   const normalizeText = (value: string) => {
     const visible = stripInlineDirectiveTagsForDisplay(
-      role === "user" ? stripInboundMetadata(value) : value,
+      role === "user" ? stripInboundMetadata(stripInterSessionPromptEnvelope(value)) : value,
     ).text;
     return visible.replace(/\s+/g, " ").trim();
   };
   const normalized = normalizeText(stripResult.text);
-  const withoutDriftNote = isClaudeImport ? stripCliSessionDriftNote(rawText) : rawText;
-  const driftNoteText =
-    withoutDriftNote !== rawText
-      ? normalizeText(stripTrailingCliImageMentions(withoutDriftNote.trim()).text)
+  const withoutDecorations = isClaudeImport ? stripCliPromptDecorations(rawText) : rawText;
+  const undecoratedText =
+    withoutDecorations !== rawText
+      ? normalizeText(stripTrailingCliImageMentions(withoutDecorations.trim()).text)
       : undefined;
   const meta = asOptionalRecord(asOptionalRecord(message)?.["__openclaw"]);
   const storedImageTurnKey = normalizeOptionalString(meta?.cliImageTurnKey);
@@ -148,7 +175,7 @@ function extractComparableText(
       ? { cliImageTurnKey: storedImageTurnKey ?? readCliImageTurnContext(joined) }
       : {}),
     ...(normalized ? { text: normalized } : {}),
-    ...(driftNoteText ? { driftNoteText } : {}),
+    ...(undecoratedText ? { undecoratedText } : {}),
   };
 }
 
@@ -171,7 +198,7 @@ function prepareComparableMessage(
     ...(comparableText.cliImageTurnKey ? { cliImageTurnKey: comparableText.cliImageTurnKey } : {}),
     role,
     text: comparableText.text,
-    driftNoteText: comparableText.driftNoteText,
+    undecoratedText: comparableText.undecoratedText,
     timestamp: asFiniteNumber(record.timestamp),
   };
 }
@@ -591,7 +618,7 @@ export function mergeImportedChatHistoryMessages(params: {
     }
     // A literal match must not consume order for an unrelated unprefixed turn.
     // Other matches also advance the note-free view, including edited identities.
-    const matchedText = matched.text === entry.text ? entry.text : entry.driftNoteText;
+    const matchedText = matched.text === entry.text ? entry.text : entry.undecoratedText;
     for (const text of [entry.text, matchedText]) {
       if (!text) {
         continue;
@@ -687,7 +714,7 @@ export function mergeImportedChatHistoryMessages(params: {
       const importedMinimumOrder = imported.text ? (byText?.get(imported.text) ?? 0) : 0;
       // A user can quote the complete note. Prefer that literal local turn
       // before comparing the text after an OpenClaw-generated note.
-      for (const text of [imported.text, imported.driftNoteText]) {
+      for (const text of [imported.text, imported.undecoratedText]) {
         if (!imported.role || !text) {
           continue;
         }
