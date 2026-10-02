@@ -12,6 +12,7 @@ import { hashCliReseedPrompt } from "../agents/cli-runner/reseed-envelope.js";
 import type { AgentMessage } from "../agents/runtime/index.js";
 import { redactTranscriptMessage } from "../agents/transcript-redact.js";
 import type { CliSessionReseedReceipt, SessionEntry } from "../config/sessions.js";
+import { buildInterSessionPromptContext } from "../sessions/input-provenance.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { readClaudeCliSessionMessages } from "./cli-session-history.claude.js";
 import {
@@ -347,6 +348,44 @@ describe("cli session history", () => {
     });
   });
 
+  it("records inter-session provenance from the routed prompt envelope", async () => {
+    await withClaudeProjectsDir(async ({ homeDir, sessionId, filePath }) => {
+      const envelope = buildInterSessionPromptContext({
+        kind: "inter_session",
+        sourceSessionKey: "agent:main:main",
+        sourceChannel: "webchat",
+        sourceTool: "sessions_send",
+      }).text;
+      await writeClaudeEntries(filePath, [
+        claudeUser(`${envelope}\n${CLAUDE_RESUME_DRIFT_NOTES[0]}\nPlease check the build.`, {
+          uuid: "routed-1",
+        }),
+        claudeUser([{ type: "text", text: `${envelope}\nBlock body.` }], { uuid: "routed-2" }),
+        claudeUser(
+          `[Inter-session message] sourceTool=sessions_send isUser=false\nTyped by hand.`,
+          {
+            uuid: "look-alike-1",
+          },
+        ),
+      ]);
+
+      const messages = readClaudeCliSessionMessages({ cliSessionId: sessionId, homeDir });
+
+      const provenance = {
+        kind: "inter_session",
+        sourceSessionKey: "agent:main:main",
+        sourceChannel: "webchat",
+        sourceTool: "sessions_send",
+      };
+      expect(messages).toMatchObject([
+        { role: "user", content: `${envelope}\nPlease check the build.`, provenance },
+        { role: "user", content: [{ type: "text", text: `${envelope}\nBlock body.` }], provenance },
+        { role: "user" },
+      ]);
+      expect(readRecord(messages[2]).provenance).toBeUndefined();
+    });
+  });
+
   it("preserves image mentions inside text blocks before history merge", async () => {
     await withClaudeProjectsDir(async ({ homeDir, sessionId, filePath }) => {
       const mention = "@/Users/demo/workspace/.openclaw-cli-images/cafe03.png";
@@ -640,6 +679,64 @@ describe("cli session history", () => {
       expect(merged).toEqual([localMessage, importedMessage]);
     },
   );
+
+  it("dedupes routed prompts whose drift note sits under the inter-session envelope", () => {
+    const envelope = buildInterSessionPromptContext({
+      kind: "inter_session",
+      sourceSessionKey: "agent:main:main",
+      sourceTool: "sessions_send",
+    }).text;
+    const provenance = {
+      kind: "inter_session",
+      sourceSessionKey: "agent:main:main",
+      sourceTool: "sessions_send",
+    };
+    const routed = { ...user(`${envelope}\nPlease check the build.`, 1_000), provenance };
+    const settled = {
+      ...user("[Subagent Context] Every subagent has settled.", 2_000),
+      provenance: { kind: "inter_session", sourceTool: "subagent_settle" },
+    };
+    const importedRouted = user(
+      `${envelope}\n${CLAUDE_RESUME_DRIFT_NOTES[2]}\nPlease check the build.`,
+      1_001,
+      cliMeta("routed"),
+    );
+    const settleEnvelope = buildInterSessionPromptContext({
+      kind: "inter_session",
+      sourceTool: "subagent_settle",
+    }).text;
+    const importedSettled = user(
+      `${settleEnvelope}\n[Subagent Context] Every subagent has settled.`,
+      2_001,
+      cliMeta("settled"),
+    );
+
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [routed, settled],
+      importedMessages: [importedRouted, importedSettled],
+    });
+
+    expect(merged).toEqual([
+      { ...routed, __openclaw: cliMeta("routed") },
+      { ...settled, __openclaw: cliMeta("settled") },
+    ]);
+  });
+
+  it("dedupes prompts carrying queued system event lines", () => {
+    const localMessage = user("what changed?", 1_000);
+    const importedMessage = user(
+      `${CLAUDE_RESUME_DRIFT_NOTES[0]}\n\nSystem: [2026-09-30 17:16:38 UTC] Gateway connected.\nSystem: second line\n\nwhat changed?`,
+      1_001,
+      cliMeta("system-events"),
+    );
+
+    expect(
+      mergeImportedChatHistoryMessages({
+        localMessages: [localMessage],
+        importedMessages: [importedMessage],
+      }),
+    ).toEqual([{ ...localMessage, __openclaw: cliMeta("system-events") }]);
+  });
 
   it("retains drift-note imports outside the match window", () => {
     const localMessage = user("hello", 1_000);
