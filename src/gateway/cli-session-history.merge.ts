@@ -10,13 +10,15 @@ import {
   hashCliImageTurnEntryId,
   readCliImageTurnContext,
 } from "../agents/cli-image-turn-correlation.js";
-import { stripCliSessionDriftNote } from "../agents/cli-session.js";
 import { isOpenClawCliImageCachePath } from "../agents/embedded-agent-runner/run/images.media-refs.js";
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import { isImageMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
-import { readInterSessionPromptEnvelope } from "../sessions/input-provenance.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { projectCliAssistantAggregatesOntoFinalSegment } from "./cli-session-history.cli-aggregate.js";
+import {
+  stripCliPromptDecorations,
+  stripInterSessionPromptEnvelope,
+} from "./cli-session-history.prompt-text.js";
 
 const DEDUPE_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
 
@@ -75,32 +77,6 @@ function stripTrailingCliImageMentions(text: string): {
   return end === lines.length
     ? { text, stripped: false }
     : { text: lines.slice(0, end).join("\n").trimEnd(), stripped: true };
-}
-
-// Some local inter-session rows store the routed text without the envelope the
-// CLI received, so both sides compare the text after it.
-function stripInterSessionPromptEnvelope(text: string): string {
-  return text.slice(readInterSessionPromptEnvelope(text)?.length ?? 0);
-}
-
-// Queued system events reach the CLI as a block of `System:` lines above the
-// prompt, separated by a blank line. The local row stores only the prompt.
-function stripLeadingSystemEventLines(text: string): string {
-  const lines = text.replace(/^\n+/u, "").split("\n");
-  let end = 0;
-  while (end < lines.length && (lines[end] === "System:" || lines[end]?.startsWith("System: "))) {
-    end += 1;
-  }
-  if (end === 0 || (end < lines.length && lines[end] !== "")) {
-    return text;
-  }
-  return lines.slice(end).join("\n");
-}
-
-// Compare-only view of an imported prompt without the context OpenClaw added
-// around the user's text before handing it to the CLI.
-function stripCliPromptDecorations(text: string): string {
-  return stripLeadingSystemEventLines(stripCliSessionDriftNote(text));
 }
 
 function isClaudeCliImportedUserMessage(message: unknown, role: string | undefined): boolean {
