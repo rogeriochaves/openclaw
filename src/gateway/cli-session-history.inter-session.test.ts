@@ -35,6 +35,10 @@ describe("cli session history inter-session prompts", () => {
         { uuid: "routed-1", content: `${envelope}\n${DRIFT_NOTE}\nPlease check the build.` },
         { uuid: "routed-2", content: [{ type: "text", text: `${envelope}\nBlock body.` }] },
         {
+          uuid: "announce-1",
+          content: `${envelope}\n${DRIFT_NOTE}\nAgent-to-agent announce step.`,
+        },
+        {
           uuid: "look-alike-1",
           content: "[Inter-session message] sourceTool=sessions_send isUser=false\nTyped by hand.",
         },

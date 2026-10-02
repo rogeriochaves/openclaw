@@ -16,6 +16,7 @@ import {
 import { hashCliReseedPrompt, parseCliReseedPrompt } from "../agents/cli-runner/reseed-envelope.js";
 import { stripCliSessionDriftNote } from "../agents/cli-session.js";
 import type { AgentMessage } from "../agents/runtime/index.js";
+import { AGENT_TO_AGENT_ANNOUNCE_STEP_MESSAGE } from "../agents/tools/sessions-send-tokens.js";
 import { redactTranscriptMessage } from "../agents/transcript-redact.js";
 import {
   isToolCallBlock,
@@ -318,7 +319,7 @@ function isClaudeCliTaskNotification(
 // provenance is the same fact the local transcript row stores structurally.
 function readClaudeCliInterSessionPrompt(
   content: string | unknown[],
-): { provenance: InputProvenance; content: string | unknown[] } | undefined {
+): { provenance: InputProvenance; content: string | unknown[]; body: string } | undefined {
   const blockIndex =
     typeof content === "string"
       ? -1
@@ -333,12 +334,13 @@ function readClaudeCliInterSessionPrompt(
     return undefined;
   }
   const visibleText = stripCliSessionDriftNote(text);
+  const body = visibleText.slice(envelope.length);
   if (typeof content === "string") {
-    return { provenance: envelope.provenance, content: visibleText };
+    return { provenance: envelope.provenance, content: visibleText, body };
   }
   const nextContent = [...content];
   nextContent[blockIndex] = { ...block, text: visibleText };
-  return { provenance: envelope.provenance, content: nextContent };
+  return { provenance: envelope.provenance, content: nextContent, body };
 }
 
 export function resolveClaudeCliPromptTextCandidates(
@@ -482,6 +484,10 @@ export function parseClaudeCliHistoryEntry(
         : undefined;
     const interSession = sourceTool ? undefined : readClaudeCliInterSessionPrompt(content);
     if (interSession) {
+      // The local transcript keeps no row for this internal turn; neither does history.
+      if (interSession.body.trim() === AGENT_TO_AGENT_ANNOUNCE_STEP_MESSAGE) {
+        return null;
+      }
       content = interSession.content;
     }
     const provenance = sourceTool

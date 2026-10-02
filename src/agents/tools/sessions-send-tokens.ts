@@ -9,6 +9,8 @@ import { HEARTBEAT_TOKEN, isSilentReplyText, SILENT_REPLY_TOKEN } from "../../au
 export const ANNOUNCE_SKIP_TOKEN = "ANNOUNCE_SKIP";
 /** Suppresses a direct reply delivery. */
 export const REPLY_SKIP_TOKEN = "REPLY_SKIP";
+/** Prompt for the a2a announce turn; it is never written to the local transcript. */
+export const AGENT_TO_AGENT_ANNOUNCE_STEP_MESSAGE = "Agent-to-agent announce step.";
 
 const NON_DELIVERABLE_REPLY_TOKENS = [
   ANNOUNCE_SKIP_TOKEN,

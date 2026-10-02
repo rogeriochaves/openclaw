@@ -28,6 +28,7 @@ import {
   buildAgentToAgentReplyContext,
   isNonDeliverableSessionsReply,
 } from "./sessions-send-helpers.js";
+import { AGENT_TO_AGENT_ANNOUNCE_STEP_MESSAGE } from "./sessions-send-tokens.js";
 
 const log = createSubsystemLogger("agents/sessions-send");
 
@@ -305,7 +306,7 @@ export async function runSessionsSendA2AFlow(params: {
     const announceReply = await runAgentStep({
       agentId: params.targetAgentId,
       sessionKey: params.targetSessionKey,
-      message: "Agent-to-agent announce step.",
+      message: AGENT_TO_AGENT_ANNOUNCE_STEP_MESSAGE,
       extraSystemPrompt: announcePrompt,
       timeoutMs: params.announceTimeoutMs,
       transcriptMessage: "",
