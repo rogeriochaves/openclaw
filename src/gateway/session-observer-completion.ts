@@ -7,7 +7,7 @@ import {
 import type { SessionObserverDeps, SessionObserverState } from "./session-observer-model.js";
 
 // CLI-backed utility models (for example claude-cli Haiku) take 9-16s per call.
-export const SESSION_OBSERVER_MODEL_TIMEOUT_MS = 30_000;
+const SESSION_OBSERVER_MODEL_TIMEOUT_MS = 30_000;
 
 type PrepareModel = NonNullable<SessionObserverDeps["prepareModel"]>;
 type CompleteModel = NonNullable<SessionObserverDeps["completeModel"]>;

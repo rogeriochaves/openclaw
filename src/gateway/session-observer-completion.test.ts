@@ -1,41 +1,57 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createSessionObserverCompletion,
-  SESSION_OBSERVER_MODEL_TIMEOUT_MS,
-} from "./session-observer-completion.js";
-import type { SessionObserverState } from "./session-observer-model.js";
+  createHarness,
+  flushObserver,
+  modelMessage,
+  resetSessionObserverEventSequence,
+  startAndAddToolNotes,
+} from "./session-observer.test-utils.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+  resetSessionObserverEventSequence();
+});
 
 describe("session observer completion", () => {
-  it("gives CLI-backed utility models 30s before aborting", async () => {
-    const timers: Array<{ callback: () => void; delay?: number }> = [];
-    const setTimeoutFn = ((callback: () => void, delay?: number) => {
-      timers.push({ callback, delay });
-      return timers.length as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout;
+  it("publishes a digest from a utility model that answers after 15s", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    // CLI-backed utility models (for example claude-cli Haiku) take 9-16s per call.
     const completeModel = vi.fn(
-      async (params: { timeoutMs?: number; abortSignal?: AbortSignal }) => {
-        expect(params.abortSignal?.aborted).toBe(false);
-        return { text: "not json" };
-      },
+      (params: { timeoutMs?: number; abortSignal?: AbortSignal }) =>
+        new Promise((resolve, reject) => {
+          params.abortSignal?.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+          setTimeout(
+            () =>
+              resolve(
+                modelMessage({
+                  headline: "Reviewing the implementation",
+                  assessment: "The work is progressing steadily.",
+                  health: "on-track",
+                }),
+              ),
+            15_000,
+          );
+        }),
     );
-    const complete = createSessionObserverCompletion({
-      getConfig: () => ({}),
-      prepareModel: async () => ({}) as never,
-      completeModel: completeModel as never,
-      setTimeoutFn,
-      clearTimeoutFn: () => {},
-      isCurrent: () => true,
-    });
-    const state = {
-      agentId: "main",
-      utilityModelRef: "anthropic/claude-haiku-4-5",
-    } as SessionObserverState;
+    const harness = createHarness({ completeModel });
+    startAndAddToolNotes(harness.observer);
 
-    await expect(complete(state, [])).rejects.toThrow("invalid JSON twice");
-
-    expect(SESSION_OBSERVER_MODEL_TIMEOUT_MS).toBe(30_000);
-    expect(timers.map((timer) => timer.delay)).toEqual([30_000]);
-    expect(completeModel).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(completeModel).toHaveBeenCalledOnce();
     expect(completeModel.mock.calls[0]?.[0].timeoutMs).toBe(30_000);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await flushObserver();
+
+    expect(completeModel.mock.calls[0]?.[0].abortSignal?.aborted).toBe(false);
+    expect(harness.broadcastToConnIds).toHaveBeenCalledWith(
+      "session.observer",
+      expect.objectContaining({ headline: "Reviewing the implementation", health: "on-track" }),
+      expect.any(Set),
+      expect.anything(),
+    );
+    harness.observer.dispose();
   });
 });
