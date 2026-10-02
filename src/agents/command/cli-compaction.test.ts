@@ -1312,11 +1312,26 @@ describe("runCliTurnCompactionLifecycle", () => {
       },
     });
     const { compactCalls, recordCliCompactionInStore } = scenario;
-    await scenario.run();
+    await scenario.run({ cliBackendId: "codex" });
 
     expect(compactAgentHarnessSession).toHaveBeenCalledTimes(1);
     expect(compactCalls).toHaveLength(0);
     expect(recordCliCompactionInStore).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps embedded compaction when no CLI backend ran the turn", async () => {
+    const resolveBackend = vi.fn(() => null);
+    const scenario = await prepareCompactionScenario({
+      suffix: "embedded-no-cli-backend",
+      tmpDir,
+      provider: "openai",
+      model: "gpt-5.5",
+      deps: { resolveCliBackendConfig: resolveBackend as never },
+    });
+    await scenario.run();
+
+    expect(resolveBackend).toHaveBeenCalledWith("openai", expect.anything());
+    expect(scenario.compactCalls).toHaveLength(1);
   });
 
   it("does not compact reset-discarded tool output in the post-turn lifecycle", async () => {
