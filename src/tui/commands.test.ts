@@ -283,7 +283,7 @@ describe("helpText", () => {
     expect(output).toContain("/openclaw [request]");
   });
 
-  it.each(["goal", "btw", "queue", "stop"])(
+  it.each(["goal", "btw", "catchup", "main", "queue", "stop"])(
     "keeps /%s visible in completion and help across TUI modes",
     (name) => {
       for (const options of [{}, { local: true }]) {
@@ -300,6 +300,7 @@ describe("helpText", () => {
     expect(output).toContain("/goal edit <objective>");
     expect(output).toContain("/btw <side question>");
     expect(output).not.toContain("/btw [side question]");
+    expect(output).toContain("/main <message>");
   });
 
   it("does not advertise Gateway-owned commands in local mode", () => {

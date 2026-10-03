@@ -195,6 +195,12 @@ function resolveBtwQuestion(message: string): string | undefined {
   return question ? question : undefined;
 }
 
+const CATCHUP_SIDE_QUESTION = "/catchup";
+
+function isCatchupMessage(message: string): boolean {
+  return /^\/catchup\s*$/i.test(message.trim());
+}
+
 export class EmbeddedTuiBackend implements TuiBackend {
   readonly connection = { url: "local embedded" };
 
@@ -327,7 +333,8 @@ export class EmbeddedTuiBackend implements TuiBackend {
     await this.ready;
     await this.preparedModelRuntime.waitUntilReady();
     const runId = opts.runId ?? randomUUID();
-    const question = resolveBtwQuestion(opts.message);
+    const catchup = isCatchupMessage(opts.message);
+    const question = catchup ? CATCHUP_SIDE_QUESTION : resolveBtwQuestion(opts.message);
     const isQueueCommand = resolveTextCommand(opts.message)?.command.key === "queue";
     const agentId = resolveSessionAgentId({
       sessionKey: opts.sessionKey,
@@ -414,6 +421,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
       managedMediaUrls: new Set(),
       isBtw: Boolean(question),
       question,
+      ...(catchup ? { sideKind: "catchup" as const } : {}),
       finishing: false,
       lifecycleEnded: false,
       registered: false,
@@ -770,6 +778,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     sessionKey: string;
     agentId?: string;
     question: string;
+    catchup?: boolean;
     timeoutMs?: number;
     controller: AbortController;
   }) {
@@ -782,11 +791,21 @@ export class EmbeddedTuiBackend implements TuiBackend {
       store,
       entry,
     } = loadSessionEntry(params.sessionKey, loadOptions);
+    const label = params.catchup ? "/catchup" : "/btw";
     if (!entry?.sessionId) {
-      throw new Error("/btw requires an active session with existing context.");
+      throw new Error(`${label} requires an active session with existing context.`);
     }
     const resolvedModel = resolveSessionModelRef(cfg, entry, sessionAgentId);
     const timeoutSeconds = timeoutSecondsFromMs(params.timeoutMs);
+    const catchup = params.catchup
+      ? (await import("../agents/catchup-side-question.js")).prepareCatchupSideQuestion({
+          cfg,
+          agentId: sessionAgentId,
+          sessionId: entry.sessionId,
+          sessionKey: canonicalKey,
+          storePath,
+        })
+      : undefined;
     const { runBtwSideQuestion } = await import("../agents/btw.js");
     const reply = await runBtwSideQuestion({
       cfg,
@@ -794,7 +813,13 @@ export class EmbeddedTuiBackend implements TuiBackend {
       agentDir: resolveAgentDir(cfg, sessionAgentId),
       provider: resolvedModel.provider,
       model: resolvedModel.model,
-      question: params.question,
+      question: catchup?.question ?? params.question,
+      ...(catchup
+        ? {
+            contextMessages: catchup.contextMessages,
+            replyBtw: { question: CATCHUP_SIDE_QUESTION, kind: "catchup" as const },
+          }
+        : {}),
       sessionEntry: entry,
       sessionStore: store,
       sessionKey: canonicalKey,
@@ -811,13 +836,13 @@ export class EmbeddedTuiBackend implements TuiBackend {
       messageProvider: INTERNAL_MESSAGE_CHANNEL,
       currentChannelId: INTERNAL_MESSAGE_CHANNEL,
     });
-    const text = reply?.text?.trim() ?? "";
-    if (!text) {
-      throw new Error("/btw produced no answer.");
+    const raw = reply?.text?.trim() ?? "";
+    if (!raw) {
+      throw new Error(`${label} produced no answer.`);
     }
     return {
       sessionKey: canonicalKey,
-      text,
+      text: catchup ? catchup.render(raw) : raw,
       isError: reply?.isError === true,
     };
   }
@@ -1370,6 +1395,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
           sessionKey: params.sessionKey,
           ...(params.agentId ? { agentId: params.agentId } : {}),
           question: activeRun.question,
+          ...(activeRun.sideKind === "catchup" ? { catchup: true } : {}),
           timeoutMs: params.timeoutMs,
           controller: params.controller,
         });
@@ -1383,6 +1409,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
         }
         this.emit("chat.side_result", {
           kind: "btw",
+          ...(run.sideKind ? { sideKind: run.sideKind } : {}),
           runId: params.runId,
           sessionKey: result.sessionKey,
           agentId: run.agentId,

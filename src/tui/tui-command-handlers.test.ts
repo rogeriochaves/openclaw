@@ -1475,6 +1475,31 @@ describe("tui command handlers", () => {
     expectSendChatFields(sendChat, { message: "/btw what changed?" });
   });
 
+  it("sends /catchup as a side request and /main as a normal message", async () => {
+    const catchup = createTuiCommandHandlersHarness({ activeChatRunId: "run-main" });
+    await catchup.handleCommand("/catchup");
+    expect(catchup.addUser).not.toHaveBeenCalled();
+    expect(catchup.noteLocalRunId).not.toHaveBeenCalled();
+    expect(catchup.noteLocalBtwRunId).toHaveBeenCalledTimes(1);
+    expect(catchup.state.activeChatRunId).toBe("run-main");
+    expectSendChatFields(catchup.sendChat, { message: "/catchup" });
+
+    const main = createTuiCommandHandlersHarness();
+    await main.handleCommand("/main ship it");
+    expect(main.noteLocalBtwRunId).not.toHaveBeenCalled();
+    expect(main.addPendingUser).toHaveBeenCalledTimes(1);
+    expectSendChatFields(main.sendChat, { message: "/main ship it" });
+
+    const bare = createTuiCommandHandlersHarness();
+    await bare.handleCommand("/main");
+    expect(bare.sendChat).not.toHaveBeenCalled();
+    expect(bare.addSystem).toHaveBeenCalledWith("Usage: /main <message>");
+
+    const local = createTuiCommandHandlersHarness({ opts: { local: true } });
+    await local.handleCommand("/main ship it");
+    expectSendChatFields(local.sendChat, { message: "ship it" });
+  });
+
   it("sends /side without hijacking the active main run", async () => {
     const { handleCommand, sendChat, addUser, noteLocalRunId, noteLocalBtwRunId, state } =
       createTuiCommandHandlersHarness({

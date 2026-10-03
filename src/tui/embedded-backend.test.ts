@@ -147,6 +147,11 @@ vi.mock("../agents/btw.js", () => ({
   runBtwSideQuestion: (...args: unknown[]) => runBtwSideQuestionMock(...args),
 }));
 
+const prepareCatchupSideQuestionMock = vi.fn();
+vi.mock("../agents/catchup-side-question.js", () => ({
+  prepareCatchupSideQuestion: (...args: unknown[]) => prepareCatchupSideQuestionMock(...args),
+}));
+
 vi.mock("../auto-reply/reply/commands-session-cost.runtime.js", () => ({
   formatSessionUsageCostSummary: (...args: unknown[]) => formatSessionUsageCostSummaryMock(...args),
 }));
@@ -3690,6 +3695,61 @@ describe("EmbeddedTuiBackend", () => {
 
     pending.reject(new Error("All fallback candidates failed"));
     await flushMicrotasks();
+  });
+
+  it("runs local /catchup as a side question with the catch-up prompt", async () => {
+    loadSessionEntryMock.mockReturnValueOnce({
+      cfg: {},
+      agentId: "main",
+      canonicalKey: "agent:main:main",
+      storePath: "/tmp/openclaw-sessions.json",
+      store: {},
+      entry: { sessionId: "session-main", updatedAt: Date.now() },
+    });
+    prepareCatchupSideQuestionMock.mockReturnValueOnce({
+      question: "catch-up prompt",
+      contextMessages: [],
+      render: (raw: string) => `Catch-up on recent messages\n\n${raw}`,
+    });
+    runBtwSideQuestionMock.mockResolvedValueOnce({ text: "all quiet" });
+
+    const backend = new EmbeddedTuiBackend();
+    const events = captureBackendEvents(backend);
+    backend.start();
+    await backend.sendChat({
+      sessionKey: "agent:main:main",
+      message: "/catchup",
+      runId: "run-catchup-1",
+      timeoutMs: 0,
+    });
+    await flushMicrotasks();
+
+    await vi.waitFor(() => expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(1));
+    expect(agentCommandFromIngressMock).not.toHaveBeenCalled();
+    expect(prepareCatchupSideQuestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-main", sessionKey: "agent:main:main" }),
+    );
+    expect(runBtwSideQuestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: "catch-up prompt",
+        contextMessages: [],
+        replyBtw: { question: "/catchup", kind: "catchup" },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(events[0]).toEqual({
+        event: "chat.side_result",
+        payload: {
+          kind: "btw",
+          sideKind: "catchup",
+          runId: "run-catchup-1",
+          sessionKey: "agent:main:main",
+          agentId: "main",
+          question: "/catchup",
+          text: "Catch-up on recent messages\n\nall quiet",
+        },
+      }),
+    );
   });
 
   it("emits side-result events for local /btw runs", async () => {

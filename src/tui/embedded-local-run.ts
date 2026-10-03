@@ -13,6 +13,8 @@ export type LocalRunState = {
   lastBroadcastText?: string;
   isBtw: boolean;
   question?: string;
+  /** Set when the side run is /catchup rather than a /btw question. */
+  sideKind?: "catchup";
   finishing: boolean;
   lifecycleEnded: boolean;
   lifecycleStopReason?: string;

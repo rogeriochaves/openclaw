@@ -59,8 +59,9 @@ function formatTuiFastMode(mode: unknown): "auto" | "on" | "off" {
   return mode === "auto" ? "auto" : mode === true ? "on" : "off";
 }
 
+// Side-chat commands answer inline and never enter the main transcript.
 function isBtwCommand(text: string): boolean {
-  return /^\/(?:btw|side)(?::|\s|$)/i.test(text.trim());
+  return /^\/(?:btw|side|catchup)(?::|\s|$)/i.test(text.trim());
 }
 
 function isSlashStopCommand(text: string): boolean {
@@ -570,6 +571,21 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         await sendMessage(raw);
       } else {
         chatLog.addSystem("Usage: /btw <side question>");
+      }
+    },
+    catchup: async (args, raw) => {
+      if (args) {
+        chatLog.addSystem("Usage: /catchup");
+      } else {
+        await sendMessage(raw);
+      }
+    },
+    main: async (args, raw) => {
+      if (args) {
+        // Local mode keeps no side thread, so /main is just the message itself.
+        await sendMessage(opts.local === true ? args : raw);
+      } else {
+        chatLog.addSystem("Usage: /main <message>");
       }
     },
     queue: async (_args, raw) => await sendMessage(raw),
