@@ -14,7 +14,10 @@ import { isOpenClawCliImageCachePath } from "../agents/embedded-agent-runner/run
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import { isImageMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
-import { projectCliAssistantAggregatesOntoFinalSegment } from "./cli-session-history.cli-aggregate.js";
+import {
+  liftQueuedPromptTimestamps,
+  projectCliAssistantAggregatesOntoFinalSegment,
+} from "./cli-session-history.cli-aggregate.js";
 import {
   stripCliPromptDecorations,
   stripInterSessionPromptEnvelope,
@@ -574,6 +577,7 @@ export function mergeImportedChatHistoryMessages(params: {
   const prepared = params.localMessages.map((message, order) =>
     prepareComparableMessage(message, order, resolveImportedExternalIdentityKey(message)),
   );
+  liftQueuedPromptTimestamps(prepared);
   const projectedAggregates = projectCliAssistantAggregatesOntoFinalSegment({
     localEntries: prepared,
     importedMessages: params.importedMessages,
