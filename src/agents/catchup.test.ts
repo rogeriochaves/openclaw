@@ -85,6 +85,17 @@ describe("buildCatchupIndex", () => {
     expect(index.lastHuman?.text).toBe("go ahead");
   });
 
+  it("skips /catchup and /btw rows when finding the owner's last message", () => {
+    const index = buildCatchupIndex([
+      ...rows,
+      ownerRow("/catchup", T0 + 20 * 60_000, "wamid-catchup"),
+      ownerRow("/btw which build is live?", T0 + 21 * 60_000, "wamid-btw"),
+    ]);
+    expect(index.lastHuman?.channelMessageId).toBe("wamid-owner");
+    expect(index.entries.map((entry) => entry.text)).not.toContain("/catchup");
+    expect(index.entries).toHaveLength(3);
+  });
+
   it("falls back to the latest rows when no owner message is present", () => {
     const index = buildCatchupIndex(rows.slice(3), { truncated: true });
     expect(index.lastHuman).toBeUndefined();

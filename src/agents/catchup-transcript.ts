@@ -1,8 +1,7 @@
 // Reads the newest transcript rows for /catchup, back to the owner's last typed message.
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { readSessionTranscriptBoundedMessageTailPage } from "../config/sessions/session-accessor.sqlite-active-events.js";
-import { isOwnerTypedUserMessage } from "../sessions/human-input.js";
-import type { CatchupTranscriptRow } from "./catchup.js";
+import { isCatchupAnchorMessage, type CatchupTranscriptRow } from "./catchup.js";
 
 const READ_PAGE_MESSAGES = 128;
 const READ_MAX_MESSAGES = 2048;
@@ -67,7 +66,7 @@ export function readCatchupTranscriptRows(
         continue;
       }
       newestFirst.push(row);
-      if (isOwnerTypedUserMessage(message)) {
+      if (isCatchupAnchorMessage(message)) {
         foundOwner = true;
         if (backgroundLimit === 0) {
           return finish(false);

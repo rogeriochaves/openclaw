@@ -53,6 +53,20 @@ function collapse(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
 }
 
+// Side questions (/catchup, /btw, /side) leave the main conversation as it was,
+// so they are never "my last message" and never show up as new messages.
+const SIDE_QUESTION_COMMAND = /^\/(?:catchup|btw|side)(?:\s|$)/iu;
+
+function isSideQuestionCommand(message: unknown): boolean {
+  const record = asOptionalRecord(message);
+  return record?.role === "user" && SIDE_QUESTION_COMMAND.test(readUserText(record).trim());
+}
+
+/** True for the owner's own typed message that a catch-up starts from. */
+export function isCatchupAnchorMessage(message: unknown): boolean {
+  return isOwnerTypedUserMessage(message) && !isSideQuestionCommand(message);
+}
+
 function readUserText(message: Record<string, unknown>): string {
   const content = message.content;
   if (typeof content === "string") {
@@ -172,7 +186,7 @@ export function buildCatchupIndex(
 ): CatchupIndex {
   let humanIndex = -1;
   for (let index = rows.length - 1; index >= 0; index--) {
-    if (isOwnerTypedUserMessage(rows[index]?.message)) {
+    if (isCatchupAnchorMessage(rows[index]?.message)) {
       humanIndex = index;
       break;
     }
@@ -182,6 +196,9 @@ export function buildCatchupIndex(
   const after = humanIndex >= 0 ? rows.slice(humanIndex + 1) : rows.slice(-WINDOW_WITHOUT_HUMAN);
   const entries: CatchupIndexEntry[] = [];
   for (const row of after) {
+    if (isSideQuestionCommand(row.message)) {
+      continue;
+    }
     const entry = toIndexEntry(row, `m${entries.length + 1}`, false);
     if (entry) {
       entries.push(entry);
@@ -258,7 +275,9 @@ export function buildCatchupQuestion(
   options: { formatTime?: CatchupTimeFormatter } = {},
 ): string {
   const formatTime = options.formatTime ?? defaultCatchupTimeFormatter();
-  const lines: string[] = ["/catchup: I was away. Catch me up."];
+  const lines: string[] = [
+    "I was away and want to catch up on this conversation. This request is not part of it.",
+  ];
   if (index.lastHuman) {
     const preview = truncateUtf16Safe(collapse(index.lastHuman.text), LAST_HUMAN_PREVIEW_CHARS);
     const ellipsis = collapse(index.lastHuman.text).length > preview.length ? "..." : "";
@@ -292,7 +311,7 @@ export function buildCatchupQuestion(
     '{"fullReport":"m7","asked":{"text":"...","refs":["m0"]},"status":{"state":"done|in_progress|stopped","text":"...","refs":["m7"]},"facts":[{"text":"...","refs":["m7"]}],"waiting":[],"blocked":[],"other":[]}',
     "Fields:",
     "- fullReport: ref of the agent's main long report on what I asked, or null if there is none.",
-    "- asked: what I asked, one line.",
+    "- asked: what I asked in my message above (ref m0), one line. Never this catch-up request. Use null when there is no message of mine.",
     "- status: where it stands now, done, in progress or stopped, one or two lines.",
     "- facts: key facts to pay attention to in the result. Point to the report, do not restate it.",
     "- waiting: actions and decisions only I can take.",
