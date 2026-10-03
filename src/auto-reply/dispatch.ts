@@ -15,6 +15,7 @@ import {
 } from "../infra/outbound/deliver-hooks.js";
 import { logMessageReceived } from "../logging/diagnostic.js";
 import { createKeyedFifoLeaseRegistry, type KeyedFifoLease } from "../shared/keyed-fifo-lease.js";
+import { createLazyImportLoader } from "../shared/lazy-promise.js";
 import type { SilentReplyConversationType } from "../shared/silent-reply-policy.js";
 import {
   resolveCommandTurnContext,
@@ -216,6 +217,22 @@ function buildDispatchTimelineAttributes(ctx: MsgContext | FinalizedMsgContext) 
   };
 }
 
+const sideChatQuoteRoutingLoader = createLazyImportLoader(
+  () => import("./reply/side-chat-quote-routing.js"),
+);
+
+// A quote-reply to a side answer becomes a /btw turn before ordering and admission read it.
+async function applySideChatQuoteRouting(
+  finalized: FinalizedMsgContext,
+  cfg: OpenClawConfig,
+): Promise<void> {
+  if (!finalized.ReplyToBody && !finalized.ReplyToQuoteText) {
+    return;
+  }
+  const { routeSideChatQuoteReply } = await sideChatQuoteRoutingLoader.load();
+  routeSideChatQuoteReply(finalized, cfg);
+}
+
 type DispatchInboundResult = DispatchFromConfigResult;
 export { settleReplyDispatcher } from "./dispatch-dispatcher.js";
 
@@ -248,6 +265,7 @@ export async function dispatchInboundMessage(params: {
       attributes: buildDispatchTimelineAttributes(params.ctx),
     },
   );
+  await applySideChatQuoteRouting(finalized, params.cfg);
   if (isDiagnosticsEnabled(params.cfg)) {
     logMessageReceived({
       sessionKey: finalized.SessionKey,
@@ -312,6 +330,7 @@ async function dispatchInboundMessageWithBufferedDispatcherCore(
   },
 ): Promise<DispatchInboundResult> {
   const finalized = finalizeInboundContext(params.ctx);
+  await applySideChatQuoteRouting(finalized, params.cfg);
   const foregroundReplyLease = reserveForegroundReplyLease(finalized, params.cfg);
   const replyOperationRunState: ReplyOperationRunState =
     resolveReplyOperationRunState(params.replyOptions) ?? {};
