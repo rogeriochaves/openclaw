@@ -325,6 +325,8 @@ user skill directly.
     | `/allowlist [list\|add\|remove] ...` | Manage allowlist entries. Text-only |
     | `/approve <id> <decision>` | Resolve exec or plugin approval prompts |
     | `/btw <question>` | Ask a side question without changing session context. Alias: `/side`. See [BTW](/tools/btw) |
+    | `/catchup` | Side answer covering everything since your last typed message, with numbered refs. See [BTW](/tools/btw#catchup-what-happened-while-you-were-away) |
+    | `/main <message>` | Send a message to the main conversation with the recent side chat attached as context. See [BTW](/tools/btw#follow-ups) |
   </Accordion>
 
   <Accordion title="Subagents and ACP">
@@ -596,6 +598,15 @@ Unlike a normal message:
 In the Control UI, `/btw` and `/side` open Side chat instead of starting the
 detached BTW path. The TUI and
 external-channel behavior above is unchanged.
+
+`/catchup` is a side question with a fixed prompt: it summarizes everything in
+the session since your last typed message, cites numbered messages, and on
+channels quotes your last message when it came from the same chat.
+
+Recent `/btw` and `/catchup` exchanges form a short-lived side thread (60
+minutes, 8 exchanges). A later `/btw`, or on channels a plain quote-reply to a
+side answer, continues it. `/main <message>` brings the side thread into the
+main conversation as context and clears it.
 
 See [BTW side questions](/tools/btw) for the full behavior.
 

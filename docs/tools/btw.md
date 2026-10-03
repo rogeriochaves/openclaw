@@ -1,7 +1,8 @@
 ---
-summary: "Ephemeral side questions with /btw"
+summary: "Ephemeral side questions with /btw and /catchup"
 read_when:
   - You want to ask a quick side question about the current session
+  - You want a catch-up on what happened since your last message
   - You are implementing or debugging BTW behavior across clients
 title: "BTW side questions"
 ---
@@ -95,6 +96,60 @@ selection popup with one action:
 
 The action follows normal `/btw` semantics: the question and answer stay out
 of session history and the main run is left untouched.
+
+## `/catchup`: what happened while you were away
+
+`/catchup` is a side question with a fixed prompt. It covers everything in the
+session since the last message you typed yourself, and answers with a short,
+structured summary:
+
+```text
+/catchup
+```
+
+- **Window.** It starts at your last typed message (Control UI, TUI, macOS app,
+  or a chat channel message from your own account). Messages from crons,
+  heartbeats, subagents, other sessions, or `openclaw agent` scripts do not
+  count as yours, even though they are stored in the user role.
+- **Answer.** Sections for what you asked, where it stands, key facts, what
+  waits on you, what is blocked, and what else happened. Every item cites
+  numbered messages such as `[7]`, and a **Refs** list at the end gives each
+  number its time, author, and a short excerpt.
+- **Quote.** On channels such as WhatsApp, when your last message came from the
+  same chat, the answer quotes it, so tapping the quote jumps to where the
+  catch-up window starts.
+- **Delivery.** Like `/btw`, the answer never enters session history and the
+  main run is left untouched. Channels show it under a
+  `Catch-up since your message at HH:MM` header instead of the BTW banner.
+- **Time zone.** Times use `agents.defaults.userTimezone`.
+
+In the Control UI, /catchup opens in the Side chat.
+
+## Follow-ups
+
+The Gateway remembers recent `/btw` and `/catchup` exchanges per session as a
+side thread: in memory only, up to 8 exchanges (about 24 KB), and for 60
+minutes after the latest one. A Gateway restart clears it.
+
+- **Continue the side chat.** `/btw <question>` while a side thread is live
+  passes the earlier exchanges to the side model as earlier side-chat turns.
+  Without a live thread, `/btw` behaves as described above.
+- **Quote-reply on a channel.** On WhatsApp and other channels that pass the
+  quoted message, replying to a side answer with plain text is handled as
+  `/btw <your text>`. This applies only to you (the owner, your own linked
+  account, or an authorized sender in a direct chat); any other plain message
+  goes to the main conversation as usual.
+- **Bring it to the main conversation.** `/main <message>` (also as a
+  quote-reply to a side answer) sends your message to the main agent with the
+  side exchanges attached below it in a `<side_chat_context>` block, then
+  clears the side thread. The block is part of the stored user turn, so the
+  agent keeps it on later turns. Without a side thread, `/main` sends your
+  message alone.
+
+In the TUI, `/catchup` shows its answer inline like `/btw`, `/btw` continues a
+live side thread, and `/main <message>` is sent as a normal message. Embedded
+`tui --local` runs `/catchup` locally but keeps no side thread, so `/main` there
+sends the message alone.
 
 ## When to use it
 
