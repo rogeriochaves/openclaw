@@ -316,6 +316,20 @@ export function buildBuiltinChatCommands(
       },
     ),
     defineBuiltinCommand(
+      "catchup",
+      "Catch up on what happened since your last message, without changing session context.",
+      "tools",
+      "standard",
+      { activeRunSafe: true },
+    ),
+    defineBuiltinCommand(
+      "main",
+      "Bring the side chat into the main conversation and continue there.",
+      "tools",
+      "standard",
+      { acceptsArgs: true },
+    ),
+    defineBuiltinCommand(
       "export-session",
       "Export current session to an owner-only HTML file in the workspace.",
       "status",

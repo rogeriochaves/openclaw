@@ -46,6 +46,8 @@ function getReservedCommands(): Set<string> {
     "whoami",
     "context",
     "btw",
+    "catchup",
+    "main",
     "stop",
     "restart",
     "reset",
