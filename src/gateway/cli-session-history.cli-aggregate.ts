@@ -11,10 +11,15 @@ type ComparableHistoryMessage = {
   externalIdentityKey?: string;
   role?: string;
   text?: string;
+  undecoratedText?: string;
   timestamp?: number;
+  suppressed?: boolean;
 };
 
 const CLI_ASSISTANT_IDEMPOTENCY_PREFIX = "cli-assistant:";
+const ABORTED_PARTIAL_IDEMPOTENCY_SUFFIX = ":assistant";
+// Bounds the backward join when imported turns have no local user boundary.
+const MAX_JOINED_SEGMENTS = 64;
 
 // Returns the joined text of a text-only message, or undefined when it also
 // carries tool calls, media, or other non-text blocks.
@@ -38,19 +43,27 @@ function readTextOnlyContent(message: unknown): string | undefined {
   return texts.join("\n");
 }
 
-function isCliAssistantAggregate(entry: ComparableHistoryMessage): boolean {
+// Returns the run id of a CLI runner aggregate or of the gateway's aborted
+// partial for the same run. Both join the run's text, so both can repeat it.
+function readCliAssistantAggregateRunId(entry: ComparableHistoryMessage): string | undefined {
   if (entry.role !== "assistant" || !entry.text || entry.externalIdentityKey) {
-    return false;
+    return undefined;
   }
   const message = asOptionalRecord(entry.message);
   const meta = asOptionalRecord(message?.["__openclaw"]);
   const idempotencyKey =
     normalizeOptionalString(message?.idempotencyKey) ??
     normalizeOptionalString(meta?.idempotencyKey);
-  return (
-    idempotencyKey?.startsWith(CLI_ASSISTANT_IDEMPOTENCY_PREFIX) === true &&
-    readTextOnlyContent(entry.message) !== undefined
-  );
+  if (!idempotencyKey || readTextOnlyContent(entry.message) === undefined) {
+    return undefined;
+  }
+  if (idempotencyKey.startsWith(CLI_ASSISTANT_IDEMPOTENCY_PREFIX)) {
+    return idempotencyKey.slice(CLI_ASSISTANT_IDEMPOTENCY_PREFIX.length) || undefined;
+  }
+  const abortRunId = normalizeOptionalString(asOptionalRecord(message?.openclawAbort)?.runId);
+  return abortRunId && idempotencyKey === `${abortRunId}${ABORTED_PARTIAL_IDEMPOTENCY_SUFFIX}`
+    ? abortRunId
+    : undefined;
 }
 
 // The CLI runner persists one assistant row per turn whose text joins every
@@ -69,8 +82,20 @@ export function projectCliAssistantAggregatesOntoFinalSegment(params: {
 }): boolean {
   const { localEntries, importedMessages } = params;
   const aggregatesByText = new Map<string, ComparableHistoryMessage[]>();
+  const runIds = new Map<ComparableHistoryMessage, string>();
+  // Only a prompt OpenClaw also recorded starts a new run. A live Claude
+  // process can wake itself for background task notifications, and Claude
+  // records oversized or tool-result rows as user rows; the runner keeps
+  // joining text across all of them into the same aggregate.
+  const localUserTexts = new Set<string>();
   for (const entry of localEntries) {
-    if (entry.text && isCliAssistantAggregate(entry)) {
+    if (entry.role === "user" && entry.text) {
+      localUserTexts.add(entry.text);
+      continue;
+    }
+    const runId = entry.text ? readCliAssistantAggregateRunId(entry) : undefined;
+    if (entry.text && runId) {
+      runIds.set(entry, runId);
       const candidates = aggregatesByText.get(entry.text) ?? [];
       candidates.push(entry);
       aggregatesByText.set(entry.text, candidates);
@@ -79,40 +104,67 @@ export function projectCliAssistantAggregatesOntoFinalSegment(params: {
   if (aggregatesByText.size === 0) {
     return false;
   }
+  const startsLocalRun = (imported: ComparableHistoryMessage) =>
+    [imported.text, imported.undecoratedText].some(
+      (text) => text !== undefined && localUserTexts.has(text),
+    );
   let projected = false;
   let turnSegments: ComparableHistoryMessage[] = [];
   for (const message of importedMessages) {
     const imported = params.prepare(message);
     if (imported.role === "user") {
-      turnSegments = [];
+      if (startsLocalRun(imported)) {
+        turnSegments = [];
+      }
       continue;
     }
     if (imported.role !== "assistant" || !imported.text) {
       continue;
     }
     turnSegments.push(imported);
+    if (turnSegments.length > MAX_JOINED_SEGMENTS) {
+      turnSegments.shift();
+    }
     const finalText = readTextOnlyContent(imported.message);
-    if (turnSegments.length < 2 || finalText === undefined) {
+    if (finalText === undefined) {
       continue;
     }
-    let joined = imported.text;
-    for (let start = turnSegments.length - 2; start >= 0; start -= 1) {
-      joined = `${turnSegments[start]?.text ?? ""} ${joined}`;
+    let joined = "";
+    for (let start = turnSegments.length - 1; start >= 0; start -= 1) {
+      const segment = turnSegments[start];
+      joined = joined ? `${segment?.text ?? ""} ${joined}` : (segment?.text ?? "");
       const candidates = aggregatesByText.get(joined);
+      // The aggregate lands when the run ends, which can be long after the
+      // final segment when background work keeps the CLI process alive.
       const matchIndex =
         candidates?.findIndex(
           (candidate) =>
             candidate.timestamp === undefined ||
-            imported.timestamp === undefined ||
-            Math.abs(candidate.timestamp - imported.timestamp) <= params.timestampWindowMs,
+            segment?.timestamp === undefined ||
+            candidate.timestamp >= segment.timestamp - params.timestampWindowMs,
         ) ?? -1;
       const aggregate = matchIndex >= 0 ? candidates?.splice(matchIndex, 1)[0] : undefined;
       if (!aggregate) {
         continue;
       }
+      const runId = runIds.get(aggregate);
+      for (const sibling of candidates ?? []) {
+        if (runIds.get(sibling) === runId) {
+          sibling.suppressed = true;
+        }
+      }
+      if (candidates) {
+        aggregatesByText.set(
+          joined,
+          candidates.filter((candidate) => !candidate.suppressed),
+        );
+      }
       const local = asOptionalRecord(aggregate.message) ?? {};
       aggregate.message = { ...local, content: [{ type: "text", text: finalText }] };
       aggregate.text = imported.text;
+      // Match the final segment inside the dedupe window; display order then
+      // follows the native row instead of the late run end.
+      aggregate.timestamp = imported.timestamp ?? aggregate.timestamp;
       projected = true;
       turnSegments = [];
       break;
