@@ -29,6 +29,8 @@ export type CatchupIndexEntry = {
   /** Channel message id when the row came from a chat channel (quote target). */
   channelMessageId?: string;
   channel?: string;
+  /** Conversation the row arrived in, so a quote is only sent back to the same chat. */
+  conversationRef?: string;
 };
 
 export type CatchupIndex = {
@@ -108,14 +110,24 @@ function describeUserSource(message: Record<string, unknown>): string {
 function readChannelFacts(message: Record<string, unknown>): {
   channel?: string;
   channelMessageId?: string;
+  conversationRef?: string;
 } {
   const transport = asOptionalRecord(asOptionalRecord(message["__openclaw"])?.transport);
   const channel = normalizeOptionalString(transport?.channel);
   const channelMessageId = normalizeOptionalString(transport?.messageId);
+  const conversationRef = normalizeOptionalString(transport?.conversationRef);
   return {
     ...(channel ? { channel } : {}),
     ...(channel && channelMessageId ? { channelMessageId } : {}),
+    ...(channel && conversationRef ? { conversationRef } : {}),
   };
+}
+
+// /main appends the side chat it brought along; the owner's own words come first.
+const SIDE_CHAT_CONTEXT_RE = /\n*<side_chat_context>[\s\S]*?<\/side_chat_context>/gu;
+
+function stripSideChatContext(text: string): string {
+  return text.replace(SIDE_CHAT_CONTEXT_RE, "");
 }
 
 function toIndexEntry(
@@ -131,7 +143,7 @@ function toIndexEntry(
   const raw =
     role === "assistant"
       ? (extractStoredAssistantText(message) ?? "")
-      : stripInterSessionPromptPrefixForDisplay(readUserText(message));
+      : stripSideChatContext(stripInterSessionPromptPrefixForDisplay(readUserText(message)));
   const text = redactToolPayloadText(raw).trim();
   if (!text) {
     return undefined;
@@ -239,15 +251,6 @@ function selectEntryBodies(entries: readonly CatchupIndexEntry[]): string[] {
   }
   return bodies;
 }
-
-export const CATCHUP_SECTION_KEYS = [
-  "asked",
-  "status",
-  "facts",
-  "waiting",
-  "blocked",
-  "other",
-] as const;
 
 /** The fixed /catchup question sent to the side model, with the numbered messages inline. */
 export function buildCatchupQuestion(

@@ -7,25 +7,39 @@ import type { CatchupTranscriptRow } from "./catchup.js";
 const READ_PAGE_MESSAGES = 128;
 const READ_MAX_MESSAGES = 2048;
 const READ_MAX_BYTES = 8 * 1024 * 1024;
+const DEFAULT_BACKGROUND_ROWS = 20;
 
 export type CatchupTranscriptRead = {
   rows: CatchupTranscriptRow[];
+  /** Up to `backgroundRows` rows before the owner's message, oldest first, as background only. */
+  backgroundRows: CatchupTranscriptRow[];
   /** True when the read stopped at a budget before reaching an owner message. */
   truncated: boolean;
 };
 
 /**
  * Pages the active transcript from the newest message backwards and stops at
- * the first owner-typed message, so the index covers exactly "since my last
- * message" without loading the whole session.
+ * the first owner-typed message (plus a few earlier rows for background), so
+ * the index covers exactly "since my last message" without loading the whole session.
  */
-export function readCatchupTranscriptRows(scope: {
-  agentId: string;
-  sessionId: string;
-  sessionKey: string;
-  storePath?: string;
-}): CatchupTranscriptRead {
+export function readCatchupTranscriptRows(
+  scope: {
+    agentId: string;
+    sessionId: string;
+    sessionKey: string;
+    storePath?: string;
+  },
+  options: { backgroundRows?: number } = {},
+): CatchupTranscriptRead {
+  const backgroundLimit = Math.max(0, options.backgroundRows ?? DEFAULT_BACKGROUND_ROWS);
   const newestFirst: CatchupTranscriptRow[] = [];
+  const backgroundNewestFirst: CatchupTranscriptRow[] = [];
+  let foundOwner = false;
+  const finish = (truncated: boolean): CatchupTranscriptRead => ({
+    rows: newestFirst.toReversed(),
+    backgroundRows: backgroundNewestFirst.toReversed(),
+    truncated: !foundOwner && truncated,
+  });
   let offset = 0;
   let bytes = 0;
   while (offset < READ_MAX_MESSAGES && bytes < READ_MAX_BYTES) {
@@ -44,9 +58,20 @@ export function readCatchupTranscriptRows(scope: {
         continue;
       }
       const entryId = typeof event.id === "string" ? event.id : undefined;
-      newestFirst.push({ message, ...(entryId ? { entryId } : {}) });
+      const row = { message, ...(entryId ? { entryId } : {}) };
+      if (foundOwner) {
+        backgroundNewestFirst.push(row);
+        if (backgroundNewestFirst.length >= backgroundLimit) {
+          return finish(false);
+        }
+        continue;
+      }
+      newestFirst.push(row);
       if (isOwnerTypedUserMessage(message)) {
-        return { rows: newestFirst.toReversed(), truncated: false };
+        foundOwner = true;
+        if (backgroundLimit === 0) {
+          return finish(false);
+        }
       }
     }
     bytes += page.serializedBytes;
@@ -56,8 +81,8 @@ export function readCatchupTranscriptRows(scope: {
       offset >= page.totalMessages ||
       page.newestContiguousEventCount !== page.scannedMessages
     ) {
-      return { rows: newestFirst.toReversed(), truncated: offset < page.totalMessages };
+      return finish(offset < page.totalMessages);
     }
   }
-  return { rows: newestFirst.toReversed(), truncated: true };
+  return finish(true);
 }
