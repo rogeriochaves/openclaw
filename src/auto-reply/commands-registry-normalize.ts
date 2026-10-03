@@ -28,7 +28,7 @@ type CommandRegistryLookup = {
 let cachedRegistryLookup: CommandRegistryLookup | undefined;
 
 // Commands whose free-text argument becomes agent input keep every line and its spacing.
-const ARGUMENT_PRESERVING_COMMAND_KEYS = new Set(["goal", "steer"]);
+const ARGUMENT_PRESERVING_COMMAND_KEYS = new Set(["goal", "main", "steer"]);
 
 const TARGETED_COMMAND_BODY_RE =
   /^\/([^\s@]+)@([A-Za-z0-9_]+)(?=$|\s|[.!?！？…,，。;；:：'"’”)\]}])([\s\S]*)$/u;

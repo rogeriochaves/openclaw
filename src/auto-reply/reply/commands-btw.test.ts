@@ -16,7 +16,16 @@ vi.mock("../../agents/btw.js", () => ({
   runBtwSideQuestion: (...args: unknown[]) => runBtwSideQuestionMock(...args),
 }));
 
-const { handleBtwCommand } = await import("./commands-btw.js");
+const readCatchupTranscriptRowsMock = vi.fn();
+
+vi.mock("../../agents/catchup-transcript.js", () => ({
+  readCatchupTranscriptRows: (...args: unknown[]) => readCatchupTranscriptRowsMock(...args),
+}));
+
+const { handleBtwCommand, handleCatchupCommand, handleMainCommand } =
+  await import("./commands-btw.js");
+const { readSideThread, recordSideThreadExchange, resetSideThreadsForTest } =
+  await import("./side-thread.js");
 
 function buildParams(commandBody: string) {
   const cfg = {
@@ -31,6 +40,7 @@ describe("handleBtwCommand", () => {
 
   beforeEach(() => {
     runBtwSideQuestionMock.mockReset();
+    resetSideThreadsForTest();
     resolveAgentDirMock.mockReset();
     resolveAgentDirMock.mockImplementation(
       (_cfg: unknown, agentId: string) => `/tmp/workspace/.openclaw/agents/${agentId}/agent`,
@@ -370,6 +380,210 @@ describe("handleBtwCommand", () => {
     expect(result).toEqual({
       shouldContinue: false,
       reply: { text: "target context", btw: { question: "what changed?" } },
+    });
+  });
+});
+
+const CATCHUP_T0 = Date.UTC(2026, 9, 3, 9, 0);
+
+function catchupRead() {
+  return {
+    rows: [
+      {
+        message: {
+          role: "user",
+          content: "fix the login bug",
+          timestamp: CATCHUP_T0,
+          __openclaw: {
+            senderIsSelf: true,
+            transport: { channel: "whatsapp", messageId: "wamid-owner" },
+          },
+        },
+      },
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Fixed it and opened PR 12." }],
+          timestamp: CATCHUP_T0 + 60_000,
+        },
+      },
+    ],
+    backgroundRows: [{ message: { role: "user", content: "earlier context" } }],
+    truncated: false,
+  };
+}
+
+function buildSessionParams(commandBody: string) {
+  const params = buildParams(commandBody);
+  params.agentDir = "/tmp/agent";
+  params.sessionKey = "agent:main:main";
+  params.sessionEntry = { sessionId: "session-1", updatedAt: Date.now() };
+  params.cfg.agents = { defaults: { userTimezone: "UTC" } };
+  return params;
+}
+
+describe("handleCatchupCommand", () => {
+  beforeEach(() => {
+    runBtwSideQuestionMock.mockReset();
+    readCatchupTranscriptRowsMock.mockReset();
+    resetSideThreadsForTest();
+    readCatchupTranscriptRowsMock.mockReturnValue(catchupRead());
+  });
+
+  it("asks the side model with the catch-up prompt and renders numbered refs", async () => {
+    const params = buildSessionParams("/catchup");
+    params.blockReplyChunking = { minChars: 1, maxChars: 100, breakPreference: "paragraph" };
+    runBtwSideQuestionMock.mockResolvedValue({
+      text: JSON.stringify({
+        fullReport: "m1",
+        status: { state: "done", text: "Fixed", refs: ["m1"] },
+      }),
+    });
+
+    const result = await handleCatchupCommand(params, true);
+
+    expectObjectFields(mockFirstObjectArg(readCatchupTranscriptRowsMock), {
+      agentId: params.agentId,
+      sessionId: "session-1",
+      sessionKey: "agent:main:main",
+    });
+    const runnerArgs = mockFirstObjectArg(runBtwSideQuestionMock);
+    expect(runnerArgs.question).toContain(
+      'Since I sent this message at 09:00: "fix the login bug"',
+    );
+    expect(runnerArgs.contextMessages).toEqual([{ role: "user", content: "earlier context" }]);
+    expect(runnerArgs.blockReplyChunking).toBeUndefined();
+    expect(runnerArgs.replyBtw).toEqual({ question: "/catchup", kind: "catchup" });
+    const text = [
+      "Catch-up since your message at 09:00",
+      "",
+      "Full report: [1] 09:01",
+      "",
+      "**Where it stands**",
+      "- Done. Fixed [1]",
+      "",
+      "**Refs**",
+      '[1] 09:01 agent: "Fixed it and opened PR 12."',
+    ].join("\n");
+    expect(result).toEqual({
+      shouldContinue: false,
+      reply: {
+        text,
+        btw: { question: "/catchup", kind: "catchup" },
+        replyToId: "wamid-owner",
+        replyToTag: true,
+      },
+    });
+    expect(readSideThread("agent:main:main")).toMatchObject([
+      { kind: "catchup", question: "/catchup", answer: text },
+    ]);
+  });
+
+  it("does not quote the owner's message from another channel", async () => {
+    const params = buildSessionParams("/catchup");
+    params.command.channel = "telegram";
+    runBtwSideQuestionMock.mockResolvedValue({ text: "nothing new" });
+
+    const result = await handleCatchupCommand(params, true);
+
+    expect(result?.reply).toEqual({
+      text: "Catch-up since your message at 09:00\n\nnothing new",
+      btw: { question: "/catchup", kind: "catchup" },
+    });
+  });
+
+  it("returns usage for arguments and refuses restricted tool policies", async () => {
+    expect(await handleCatchupCommand(buildSessionParams("/catchup now"), true)).toEqual({
+      shouldContinue: false,
+      reply: { text: "Usage: /catchup" },
+    });
+    const params = buildSessionParams("/catchup");
+    params.ctx.ConversationToolPolicy = { deny: ["exec"] };
+    const refused = await handleCatchupCommand(params, true);
+    expect(refused?.reply).toMatchObject({
+      btw: { question: "/catchup", kind: "catchup" },
+      isError: true,
+    });
+    expect(runBtwSideQuestionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("side-chat follow-ups", () => {
+  beforeEach(() => {
+    runBtwSideQuestionMock.mockReset();
+    resetSideThreadsForTest();
+  });
+
+  it("continues a live side thread and remembers the new exchange", async () => {
+    recordSideThreadExchange("agent:main:main", {
+      kind: "catchup",
+      question: "/catchup",
+      answer: "Catch-up since your message at 09:00\n\nAll done",
+    });
+    runBtwSideQuestionMock.mockResolvedValue({ text: "PR 12" });
+
+    const result = await handleBtwCommand(buildSessionParams("/btw which PR?"), true);
+
+    const question = String(mockFirstObjectArg(runBtwSideQuestionMock).question);
+    expect(question).toContain("<side_chat_history>\nOwner: /catchup\nSide assistant: Catch-up");
+    expect(question.endsWith("which PR?")).toBe(true);
+    expect(result?.reply).toEqual({ text: "PR 12", btw: { question: "which PR?" } });
+    expect(readSideThread("agent:main:main").map((entry) => entry.answer)).toEqual([
+      "Catch-up since your message at 09:00\n\nAll done",
+      "PR 12",
+    ]);
+  });
+
+  it("remembers streamed answers", async () => {
+    const params = buildSessionParams("/btw what changed?");
+    const onBlockReply = vi.fn();
+    params.opts = { onBlockReply };
+    runBtwSideQuestionMock.mockImplementation(async (input: { opts?: typeof params.opts }) => {
+      await input.opts?.onBlockReply?.({ text: "streamed " });
+      await input.opts?.onBlockReply?.({ text: "answer" });
+      return undefined;
+    });
+
+    await handleBtwCommand(params, true);
+
+    expect(onBlockReply).toHaveBeenCalledTimes(2);
+    expect(readSideThread("agent:main:main")[0]?.answer).toBe("streamed answer");
+  });
+
+  it("brings the side thread into the main conversation with /main", async () => {
+    recordSideThreadExchange("agent:main:main", {
+      kind: "btw",
+      question: "is it safe?",
+      answer: "Yes, it only adds a column.",
+    });
+    const params = buildSessionParams("/main run the migration");
+
+    const result = await handleMainCommand(params, true);
+
+    expect(result).toEqual({ shouldContinue: true });
+    const body = [
+      "run the migration",
+      "",
+      "<side_chat_context>",
+      "Earlier side chat between the owner and a side assistant, outside this conversation, oldest first. The owner brought it here as context for the message above.",
+      "",
+      "Owner: is it safe?",
+      "Side assistant: Yes, it only adds a column.",
+      "",
+      "</side_chat_context>",
+    ].join("\n");
+    expect(params.ctx.BodyForAgent).toBe(body);
+    expect(params.command.commandBodyNormalized).toBe(body);
+    expect(readSideThread("agent:main:main")).toEqual([]);
+  });
+
+  it("continues /main with the text alone, and asks for text when bare", async () => {
+    const params = buildSessionParams("/main run it");
+    expect(await handleMainCommand(params, true)).toEqual({ shouldContinue: true });
+    expect(params.ctx.BodyForAgent).toBe("run it");
+    expect(await handleMainCommand(buildSessionParams("/main"), true)).toEqual({
+      shouldContinue: false,
+      reply: { text: "Usage: /main <message>" },
     });
   });
 });

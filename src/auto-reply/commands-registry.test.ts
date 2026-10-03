@@ -284,6 +284,18 @@ describe("commands registry", () => {
     },
   );
 
+  it("runs /catchup beside an active run while /main queues like a message", () => {
+    const safe = (body: string) =>
+      isActiveRunSafeCommandTurn({
+        commandTurn: createCommandTurnContext("text", { authorized: true, body }),
+        cfg: {},
+      });
+    expect(requireChatCommand("catchup").textAliases).toEqual(["/catchup"]);
+    expect(requireChatCommand("main").acceptsArgs).toBe(true);
+    expect(safe("/catchup")).toBe(true);
+    expect(safe("/main ship it")).toBe(false);
+  });
+
   it("exposes /side as a BTW text and native alias", () => {
     const btw = requireChatCommand("btw");
     expect(btw.nativeName).toBe("btw");
@@ -367,6 +379,9 @@ describe("commands registry", () => {
       "/reset soft re-read persona files",
     );
     expect(normalizeCommandBody("/side first line\nsecond line")).toBe("/btw first line");
+    expect(normalizeCommandBody("/main first line\nsecond line")).toBe(
+      "/main first line\nsecond line",
+    );
     expect(normalizeCommandBody("/id\nignored")).toBe("/whoami");
   });
 
