@@ -37,6 +37,13 @@ const importedUser = (externalId: string, text: string, timestamp: number) => ({
   __openclaw: meta(externalId),
 });
 
+function visibleTexts(messages: unknown[], role: string): string[] {
+  return messages.flatMap((message) => {
+    const record = message as { role?: string; content?: unknown };
+    return record.role === role && typeof record.content === "string" ? [record.content] : [];
+  });
+}
+
 function visibleAssistantTexts(messages: unknown[]): string[] {
   return messages.flatMap((message) => {
     const record = message as { role?: string; content?: unknown };
@@ -172,5 +179,66 @@ describe("Claude CLI aggregates that span several native turns", () => {
     });
 
     expect(visibleAssistantTexts(merged)).toEqual(["Done.", "Done."]);
+  });
+});
+
+describe("Claude CLI prompts queued behind a busy run", () => {
+  const H20 = 20 * 60 * MINUTE;
+
+  it("shows a queued prompt once when Claude got it long after it was sent", () => {
+    const prompt = "I liked the second one. Try the persona too.";
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [
+        { role: "user", content: "bring the preview back up", timestamp: H20 + 16 * MINUTE },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "The preview is back." }],
+          stopReason: "stop",
+          timestamp: H20 + 49 * MINUTE,
+          idempotencyKey: "cli-assistant:run-q",
+        },
+        // Stamped when sent; the transcript writes it after the busy run ends.
+        { role: "user", content: prompt, timestamp: H20 + 33 * MINUTE },
+      ],
+      importedMessages: [
+        importedUser("native-u1", "bring the preview back up", H20 + 16 * MINUTE + 1_000),
+        importedText("native-a1", "The preview is back.", H20 + 49 * MINUTE),
+        importedUser("native-u2", prompt, H20 + 49 * MINUTE + 1_000),
+      ],
+    });
+
+    expect(visibleTexts(merged, "user")).toEqual(["bring the preview back up", prompt]);
+  });
+
+  it("keeps the same prompt twice when the second one was queued", () => {
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [
+        { role: "user", content: "go on", timestamp: 0 },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Round 1 is done." }],
+          stopReason: "stop",
+          timestamp: 40 * MINUTE,
+          idempotencyKey: "cli-assistant:run-1",
+        },
+        { role: "user", content: "go on", timestamp: 30 * MINUTE },
+      ],
+      importedMessages: [
+        importedUser("native-u1", "go on", 1_000),
+        importedText("native-a1", "Round 1 is done.", 40 * MINUTE),
+        importedUser("native-u2", "go on", 40 * MINUTE + 1_000),
+      ],
+    });
+
+    expect(visibleTexts(merged, "user")).toEqual(["go on", "go on"]);
+  });
+
+  it("keeps a native prompt that is older than the local one", () => {
+    const merged = mergeImportedChatHistoryMessages({
+      localMessages: [{ role: "user", content: "go on", timestamp: 30 * MINUTE }],
+      importedMessages: [importedUser("native-u1", "go on", 0)],
+    });
+
+    expect(visibleTexts(merged, "user")).toEqual(["go on", "go on"]);
   });
 });

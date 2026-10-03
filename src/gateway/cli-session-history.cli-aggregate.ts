@@ -1,5 +1,5 @@
-// Collapses the CLI runner's joined assistant reply onto its final segment
-// so imported Claude history does not render the same answer twice.
+// Aligns local CLI rows with imported Claude history so a reply or a queued
+// prompt does not render twice.
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   normalizeOptionalString,
@@ -64,6 +64,25 @@ function readCliAssistantAggregateRunId(entry: ComparableHistoryMessage): string
   return abortRunId && idempotencyKey === `${abortRunId}${ABORTED_PARTIAL_IDEMPOTENCY_SUFFIX}`
     ? abortRunId
     : undefined;
+}
+
+// A prompt sent while a run is busy keeps its send time but is written after
+// that run's reply, and Claude records it when the queue delivers it. It
+// cannot have reached Claude before the row stored ahead of it, so match it
+// from there.
+export function liftQueuedPromptTimestamps(localEntries: ComparableHistoryMessage[]): void {
+  let previousTimestamp: number | undefined;
+  for (const entry of localEntries) {
+    if (
+      entry.role === "user" &&
+      entry.timestamp !== undefined &&
+      previousTimestamp !== undefined &&
+      previousTimestamp > entry.timestamp
+    ) {
+      entry.timestamp = previousTimestamp;
+    }
+    previousTimestamp = entry.timestamp ?? previousTimestamp;
+  }
 }
 
 // The CLI runner persists one assistant row per turn whose text joins every
