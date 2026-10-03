@@ -13900,19 +13900,131 @@ public struct SessionCatalogTranscriptItem: Codable, Sendable {
     }
 }
 
+public struct SessionCompanionCatchupItem: Codable, Sendable {
+    public let text: String
+    public let refs: [String]
+
+    public init(
+        text: String,
+        refs: [String])
+    {
+        self.text = text
+        self.refs = refs
+    }
+}
+
+public struct SessionCompanionCatchupRef: Codable, Sendable {
+    public let ref: String
+    public let entryid: String?
+    public let ts: Int?
+    public let label: String
+    public let excerpt: String
+
+    public init(
+        ref: String,
+        entryid: String? = nil,
+        ts: Int? = nil,
+        label: String,
+        excerpt: String)
+    {
+        self.ref = ref
+        self.entryid = entryid
+        self.ts = ts
+        self.label = label
+        self.excerpt = excerpt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ref
+        case entryid = "entryId"
+        case ts
+        case label
+        case excerpt
+    }
+}
+
+public struct SessionCompanionCatchup: Codable, Sendable {
+    public let ownermessagefound: Bool
+    public let sincets: Int?
+    public let fullreport: String?
+    public let asked: SessionCompanionCatchupItem?
+    public let status: SessionCompanionCatchupStatus?
+    public let facts: [SessionCompanionCatchupItem]
+    public let waiting: [SessionCompanionCatchupItem]
+    public let blocked: [SessionCompanionCatchupItem]
+    public let other: [SessionCompanionCatchupItem]
+    public let refs: [SessionCompanionCatchupRef]
+
+    public init(
+        ownermessagefound: Bool,
+        sincets: Int? = nil,
+        fullreport: String? = nil,
+        asked: SessionCompanionCatchupItem? = nil,
+        status: SessionCompanionCatchupStatus? = nil,
+        facts: [SessionCompanionCatchupItem],
+        waiting: [SessionCompanionCatchupItem],
+        blocked: [SessionCompanionCatchupItem],
+        other: [SessionCompanionCatchupItem],
+        refs: [SessionCompanionCatchupRef])
+    {
+        self.ownermessagefound = ownermessagefound
+        self.sincets = sincets
+        self.fullreport = fullreport
+        self.asked = asked
+        self.status = status
+        self.facts = facts
+        self.waiting = waiting
+        self.blocked = blocked
+        self.other = other
+        self.refs = refs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ownermessagefound = "ownerMessageFound"
+        case sincets = "sinceTs"
+        case fullreport = "fullReport"
+        case asked
+        case status
+        case facts
+        case waiting
+        case blocked
+        case other
+        case refs
+    }
+}
+
+public struct SessionCompanionCatchupStatus: Codable, Sendable {
+    public let text: String
+    public let refs: [String]
+    public let state: AnyCodable?
+
+    public init(
+        text: String,
+        refs: [String],
+        state: AnyCodable? = nil)
+    {
+        self.text = text
+        self.refs = refs
+        self.state = state
+    }
+}
+
 public struct SessionCompanionExchange: Codable, Sendable {
     public let question: String
     public let answer: String
     public let ts: Int
+    public let catchup: SessionCompanionCatchup?
 
     public init(
         question: String,
         answer: String,
-        ts: Int)
+        ts: Int,
+        catchup: SessionCompanionCatchup? = nil)
     {
         self.question = question
         self.answer = answer
         self.ts = ts
+        self.catchup = catchup
     }
 }
 
@@ -16334,35 +16446,42 @@ public struct SessionsCompactParams: Codable, Sendable {
 public struct SessionsCompanionAskParams: Codable, Sendable {
     public let sessionkey: String
     public let agentid: String?
-    public let question: String
+    public let question: String?
+    public let mode: String?
 
     public init(
         sessionkey: String,
         agentid: String? = nil,
-        question: String)
+        question: String? = nil,
+        mode: String? = nil)
     {
         self.sessionkey = sessionkey
         self.agentid = agentid
         self.question = question
+        self.mode = mode
     }
 
     private enum CodingKeys: String, CodingKey {
         case sessionkey = "sessionKey"
         case agentid = "agentId"
         case question
+        case mode
     }
 }
 
 public struct SessionsCompanionAskResult: Codable, Sendable {
     public let answer: String
     public let ts: Int
+    public let catchup: SessionCompanionCatchup?
 
     public init(
         answer: String,
-        ts: Int)
+        ts: Int,
+        catchup: SessionCompanionCatchup? = nil)
     {
         self.answer = answer
         self.ts = ts
+        self.catchup = catchup
     }
 }
 

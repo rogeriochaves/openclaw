@@ -121,24 +121,74 @@ export const SessionsObserverVisibilityResultSchema = closedObject({
   ok: Type.Literal(true),
 });
 
+const SessionCompanionCatchupRefIdSchema = Type.String({ minLength: 1, maxLength: 16 });
+
+/** One condensed catch-up line and the transcript refs it comes from. */
+export const SessionCompanionCatchupItemSchema = closedObject({
+  text: Type.String({ minLength: 1, maxLength: 400 }),
+  refs: Type.Array(SessionCompanionCatchupRefIdSchema, { maxItems: 32 }),
+});
+
+/** Catch-up status line; state is omitted when the model did not classify it. */
+export const SessionCompanionCatchupStatusSchema = closedObject({
+  text: Type.String({ minLength: 1, maxLength: 400 }),
+  refs: Type.Array(SessionCompanionCatchupRefIdSchema, { maxItems: 32 }),
+  state: Type.Optional(
+    Type.Union([Type.Literal("done"), Type.Literal("in_progress"), Type.Literal("stopped")]),
+  ),
+});
+
+/** A cited transcript message; entryId is the main-chat message identity when known. */
+export const SessionCompanionCatchupRefSchema = closedObject({
+  ref: SessionCompanionCatchupRefIdSchema,
+  entryId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  ts: Type.Optional(Type.Integer({ minimum: 0 })),
+  label: Type.String({ minLength: 1, maxLength: 512 }),
+  excerpt: Type.String({ maxLength: 400 }),
+});
+
+/** Structured /catchup answer scoped to messages since the owner's last typed message. */
+export const SessionCompanionCatchupSchema = closedObject({
+  ownerMessageFound: Type.Boolean(),
+  sinceTs: Type.Optional(Type.Integer({ minimum: 0 })),
+  fullReport: Type.Optional(SessionCompanionCatchupRefIdSchema),
+  asked: Type.Optional(SessionCompanionCatchupItemSchema),
+  status: Type.Optional(SessionCompanionCatchupStatusSchema),
+  facts: Type.Array(SessionCompanionCatchupItemSchema, { maxItems: 8 }),
+  waiting: Type.Array(SessionCompanionCatchupItemSchema, { maxItems: 8 }),
+  blocked: Type.Array(SessionCompanionCatchupItemSchema, { maxItems: 8 }),
+  other: Type.Array(SessionCompanionCatchupItemSchema, { maxItems: 8 }),
+  refs: Type.Array(SessionCompanionCatchupRefSchema, { maxItems: 256 }),
+});
+
+// Normal answers stay capped at 1200 characters by the Gateway; only catch-up
+// exchanges carry the longer rendered text.
+const SessionCompanionAnswerSchema = Type.String({ minLength: 1, maxLength: 6000 });
+
 /** One bounded question/answer exchange in the ephemeral session companion. */
 export const SessionCompanionExchangeSchema = closedObject({
   question: Type.String({ minLength: 1, maxLength: 400 }),
-  answer: Type.String({ minLength: 1, maxLength: 1200 }),
+  answer: SessionCompanionAnswerSchema,
   ts: Type.Integer({ minimum: 0 }),
+  catchup: Type.Optional(SessionCompanionCatchupSchema),
 });
 
-/** Asks the read-only companion about one session and its workspace. */
+/**
+ * Asks the read-only companion about one session and its workspace. Mode
+ * `catchup` runs the fixed catch-up prompt and ignores the question.
+ */
 export const SessionsCompanionAskParamsSchema = closedObject({
   sessionKey: NonEmptyString,
   agentId: Type.Optional(NonEmptyString),
-  question: Type.String({ minLength: 1, maxLength: 400 }),
+  question: Type.Optional(Type.String({ minLength: 1, maxLength: 400 })),
+  mode: Type.Optional(Type.Literal("catchup")),
 });
 
 /** Companion answer returned only to the requesting operator. */
 export const SessionsCompanionAskResultSchema = closedObject({
-  answer: Type.String({ minLength: 1, maxLength: 1200 }),
+  answer: SessionCompanionAnswerSchema,
   ts: Type.Integer({ minimum: 0 }),
+  catchup: Type.Optional(SessionCompanionCatchupSchema),
 });
 
 /** Selects the in-memory companion thread for one session. */
@@ -710,6 +760,9 @@ export type SessionsObserverVisibilityParams = Static<
 export type SessionsObserverVisibilityResult = Static<
   typeof SessionsObserverVisibilityResultSchema
 >;
+export type SessionCompanionCatchupItem = Static<typeof SessionCompanionCatchupItemSchema>;
+export type SessionCompanionCatchupRef = Static<typeof SessionCompanionCatchupRefSchema>;
+export type SessionCompanionCatchup = Static<typeof SessionCompanionCatchupSchema>;
 export type SessionCompanionExchange = Static<typeof SessionCompanionExchangeSchema>;
 export type SessionsCompanionAskParams = Static<typeof SessionsCompanionAskParamsSchema>;
 export type SessionsCompanionAskResult = Static<typeof SessionsCompanionAskResultSchema>;

@@ -424,9 +424,11 @@ describe("lazy protocol validators", () => {
     });
     expectAccepted(validateSessionsCompanionAskParams, [
       companion({ question: "What changed in the project?" }),
+      companion({ mode: "catchup" }),
     ]);
     expectRejected(validateSessionsCompanionAskParams, [
       companion({ question: "x".repeat(401) }),
+      companion({ mode: "summary" }),
       { sessionKey: "", question: "why" },
       companion({ question: "why", extra: true }),
     ]);
