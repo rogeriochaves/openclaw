@@ -10,21 +10,7 @@ import {
 } from "../agents/admitted-run-context.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { buildBtwCliPrompt } from "../agents/btw-prompts.js";
-import {
-  parseCatchupAnswer,
-  renderCatchupText,
-  type CatchupAnswer,
-  type CatchupItem,
-} from "../agents/catchup-answer.js";
-import {
-  buildCatchupIndex,
-  buildCatchupQuestion,
-  catchupEntriesByRef,
-  defaultCatchupTimeFormatter,
-  type CatchupIndex,
-} from "../agents/catchup.js";
 import type { PreparedCliRunContext } from "../agents/cli-runner/types.js";
-import { resolveUserTimezone } from "../agents/date-time.js";
 import type { InternalSessionEffectsTarget } from "../agents/internal-session-effects.js";
 import { withSessionManagerWrite } from "../agents/sessions/session-manager-write-admission.js";
 import { resolveSimpleCompletionSelectionForAgent } from "../agents/simple-completion-runtime.js";
@@ -36,6 +22,10 @@ import type { Message, Usage } from "../llm/types.js";
 import { redactToolPayloadText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import {
+  finishSessionCompanionCatchup,
+  prepareSessionCompanionCatchup,
+} from "./session-companion-catchup.js";
 import {
   defaultSessionCompanionCatchupReader,
   type SessionCompanionCatchupReader,
@@ -61,7 +51,6 @@ const ANSWER_MAX_CHARS = 1200;
 const CATCHUP_ASK_TIMEOUT_MS = 120_000;
 const CATCHUP_ANSWER_MAX_CHARS = 6000;
 const CATCHUP_EXCHANGE_QUESTION = "/catchup";
-const CATCHUP_REFS_PER_ITEM = 32;
 const DELTA_MAX_BYTES = 4 * 1024;
 const MAX_CONCURRENT_ASKS = 6;
 const ASK_RATE_WINDOW_MS = 60_000;
@@ -516,79 +505,6 @@ function sanitizeAnswer(value: string, maxChars = ANSWER_MAX_CHARS): string {
   return truncateUtf16Safe(redacted, maxChars);
 }
 
-type PreparedCatchup = {
-  index: CatchupIndex;
-  question: string;
-  formatTime: (ts: number) => string;
-};
-
-function prepareCatchup(params: {
-  cfg: OpenClawConfig;
-  sessionId: string;
-  read: ReturnType<SessionCompanionCatchupReader>;
-}): PreparedCatchup {
-  if (params.read.kind === "missing") {
-    throw contextError("session-missing", "The selected session is no longer available.");
-  }
-  if (params.read.kind === "unavailable") {
-    throw contextError("context-unavailable", "The selected session history could not be loaded.");
-  }
-  if (params.read.sessionId !== params.sessionId) {
-    throw contextError(
-      "context-unavailable",
-      "The selected session changed before Side chat could answer.",
-    );
-  }
-  const formatTime = defaultCatchupTimeFormatter(
-    resolveUserTimezone(params.cfg.agents?.defaults?.userTimezone),
-  );
-  const index = buildCatchupIndex(params.read.rows, { truncated: params.read.truncated });
-  return { index, question: buildCatchupQuestion(index, { formatTime }), formatTime };
-}
-
-function toProtocolItem(item: CatchupItem): CatchupItem {
-  return { text: item.text, refs: item.refs.slice(0, CATCHUP_REFS_PER_ITEM) };
-}
-
-/** Projects a parsed answer onto the protocol shape, resolving each cited ref once. */
-function toProtocolCatchup(answer: CatchupAnswer, index: CatchupIndex): SessionCompanionCatchup {
-  const asked = answer.asked ? toProtocolItem(answer.asked) : undefined;
-  const status = answer.status
-    ? {
-        ...toProtocolItem(answer.status),
-        ...(answer.status.state ? { state: answer.status.state } : {}),
-      }
-    : undefined;
-  const lists = {
-    facts: answer.facts.map(toProtocolItem),
-    waiting: answer.waiting.map(toProtocolItem),
-    blocked: answer.blocked.map(toProtocolItem),
-    other: answer.other.map(toProtocolItem),
-  };
-  const cited = new Set<string>(answer.fullReport ? [answer.fullReport] : []);
-  for (const item of [asked, status, ...Object.values(lists).flat()]) {
-    item?.refs.forEach((ref) => cited.add(ref));
-  }
-  const refs = [...catchupEntriesByRef(index).values()]
-    .filter((entry) => cited.has(entry.ref))
-    .map((entry) => ({
-      ref: entry.ref,
-      ...(entry.entryId ? { entryId: entry.entryId } : {}),
-      ...(entry.ts ? { ts: Math.floor(entry.ts) } : {}),
-      label: entry.label,
-      excerpt: entry.excerpt,
-    }));
-  return {
-    ownerMessageFound: index.lastHuman !== undefined,
-    ...(index.lastHuman?.ts ? { sinceTs: Math.floor(index.lastHuman.ts) } : {}),
-    ...(answer.fullReport ? { fullReport: answer.fullReport } : {}),
-    ...(asked ? { asked } : {}),
-    ...(status ? { status } : {}),
-    ...lists,
-    refs,
-  };
-}
-
 function contextError(
   reason: "context-unavailable" | "session-missing",
   message: string,
@@ -809,13 +725,24 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
       const delta = selectDeltaNotes(currentSnapshot, thread.lastNoteSequence);
       // Catch-up always reads fresh rows; its prompt carries every message since
       // the owner's last one, so it skips the cached reference and prior exchanges.
-      const catchup = catchupMode
-        ? prepareCatchup({
-            cfg,
-            sessionId: thread.context.sessionId,
-            read: catchupReader({ agentId, sessionKey }),
-          })
-        : undefined;
+      let catchup: ReturnType<typeof prepareSessionCompanionCatchup> | undefined;
+      if (catchupMode) {
+        const read = catchupReader({ agentId, sessionKey });
+        if (read.kind === "missing") {
+          throw contextError("session-missing", "The selected session is no longer available.");
+        }
+        if (read.kind === "unavailable" || read.sessionId !== thread.context.sessionId) {
+          throw contextError(
+            "context-unavailable",
+            "The selected session history could not be loaded.",
+          );
+        }
+        catchup = prepareSessionCompanionCatchup({
+          cfg,
+          rows: read.rows,
+          truncated: read.truncated,
+        });
+      }
       const messages: SessionCompanionPromptMessage[] = catchup
         ? [{ role: "user", content: catchup.question, ts: admittedAt }]
         : composePromptMessages({
@@ -858,18 +785,11 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
       if (!sanitized) {
         throw new Error("session companion returned an empty answer");
       }
-      const parsed = catchup ? parseCatchupAnswer(sanitized, catchup.index) : undefined;
-      // Follow-ups replay the rendered text, so the stored answer stays readable
-      // even when the structured payload is missing.
-      const answer = catchup
-        ? truncateUtf16Safe(
-            renderCatchupText(parsed, sanitized, catchup.index, {
-              formatTime: catchup.formatTime,
-            }),
-            CATCHUP_ANSWER_MAX_CHARS,
-          )
-        : sanitized;
-      const structured = catchup && parsed ? toProtocolCatchup(parsed, catchup.index) : undefined;
+      const finished = catchup
+        ? finishSessionCompanionCatchup(catchup, sanitized, CATCHUP_ANSWER_MAX_CHARS)
+        : undefined;
+      const answer = finished?.answer ?? sanitized;
+      const structured = finished?.catchup;
       const ts = params.now();
       const exchange: SessionCompanionExchange = {
         question,

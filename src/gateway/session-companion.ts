@@ -107,12 +107,9 @@ export function createSessionCompanion(deps: SessionCompanionDeps): SessionCompa
       }
       thread.lastUsedAt = now();
       return {
-        exchanges: thread.exchanges.map(({ question, answer, ts, catchup }) => ({
-          question,
-          answer,
-          ts,
-          ...(catchup ? { catchup } : {}),
-        })),
+        exchanges: thread.exchanges.map(({ question, answer, ts, catchup }) =>
+          catchup ? { question, answer, ts, catchup } : { question, answer, ts },
+        ),
       };
     },
     reset(target) {
