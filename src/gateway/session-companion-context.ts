@@ -257,12 +257,10 @@ export const defaultSessionCompanionCatchupReader: SessionCompanionCatchupReader
     return { kind: "missing" };
   }
   try {
-    const read = readCatchupTranscriptRows({
-      agentId,
-      sessionId,
-      sessionKey,
-      storePath: loaded.storePath,
-    });
+    const read = readCatchupTranscriptRows(
+      { agentId, sessionId, sessionKey, storePath: loaded.storePath },
+      { backgroundRows: 0 },
+    );
     return { kind: "ready", sessionId, rows: read.rows, truncated: read.truncated };
   } catch {
     return { kind: "unavailable" };
