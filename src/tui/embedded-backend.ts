@@ -197,8 +197,10 @@ function resolveBtwQuestion(message: string): string | undefined {
 
 const CATCHUP_SIDE_QUESTION = "/catchup";
 
-function isCatchupMessage(message: string): boolean {
-  return /^\/catchup\s*$/i.test(message.trim());
+/** Returns "run" or "refresh" for /catchup messages, undefined otherwise. */
+function resolveCatchupMessage(message: string): "run" | "refresh" | undefined {
+  const match = /^\/catchup(?:\s+(refresh))?\s*$/i.exec(message.trim());
+  return match ? (match[1] ? "refresh" : "run") : undefined;
 }
 
 export class EmbeddedTuiBackend implements TuiBackend {
@@ -333,7 +335,8 @@ export class EmbeddedTuiBackend implements TuiBackend {
     await this.ready;
     await this.preparedModelRuntime.waitUntilReady();
     const runId = opts.runId ?? randomUUID();
-    const catchup = isCatchupMessage(opts.message);
+    const catchupMode = resolveCatchupMessage(opts.message);
+    const catchup = catchupMode !== undefined;
     const question = catchup ? CATCHUP_SIDE_QUESTION : resolveBtwQuestion(opts.message);
     const isQueueCommand = resolveTextCommand(opts.message)?.command.key === "queue";
     const agentId = resolveSessionAgentId({
@@ -422,6 +425,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
       isBtw: Boolean(question),
       question,
       ...(catchup ? { sideKind: "catchup" as const } : {}),
+      ...(catchupMode === "refresh" ? { sideRefresh: true } : {}),
       finishing: false,
       lifecycleEnded: false,
       registered: false,
@@ -779,6 +783,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     agentId?: string;
     question: string;
     catchup?: boolean;
+    refresh?: boolean;
     timeoutMs?: number;
     controller: AbortController;
   }) {
@@ -806,6 +811,14 @@ export class EmbeddedTuiBackend implements TuiBackend {
           storePath,
         })
       : undefined;
+    const sideThread = catchup ? await import("../auto-reply/reply/side-thread.js") : undefined;
+    const kept =
+      catchup && !params.refresh
+        ? sideThread?.readKeptCatchup(canonicalKey, catchup.coverageKey)
+        : undefined;
+    if (kept) {
+      return { sessionKey: canonicalKey, text: kept, isError: false };
+    }
     const { runBtwSideQuestion } = await import("../agents/btw.js");
     const reply = await runBtwSideQuestion({
       cfg,
@@ -840,9 +853,13 @@ export class EmbeddedTuiBackend implements TuiBackend {
     if (!raw) {
       throw new Error(`${label} produced no answer.`);
     }
+    const text = catchup ? catchup.render(raw) : raw;
+    if (catchup && reply?.isError !== true) {
+      sideThread?.keepCatchup(canonicalKey, catchup.coverageKey, text);
+    }
     return {
       sessionKey: canonicalKey,
-      text: catchup ? catchup.render(raw) : raw,
+      text,
       isError: reply?.isError === true,
     };
   }
@@ -1396,6 +1413,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
           ...(params.agentId ? { agentId: params.agentId } : {}),
           question: activeRun.question,
           ...(activeRun.sideKind === "catchup" ? { catchup: true } : {}),
+          ...(activeRun.sideRefresh ? { refresh: true } : {}),
           timeoutMs: params.timeoutMs,
           controller: params.controller,
         });

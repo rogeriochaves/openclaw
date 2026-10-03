@@ -4030,6 +4030,8 @@ export const en: TranslationMap & {
       sendToMainHint: "Send this message to the main chat with this side chat attached",
       catchup: {
         pending: "Catching you up on this session…",
+        kept: "Nothing new since this catch-up.",
+        refresh: "Refresh",
         headingSince: "Catch-up since your message at {time}",
         headingRecent: "Catch-up on recent messages",
         fullReport: "Full report",

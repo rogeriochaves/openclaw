@@ -14,6 +14,7 @@ import {
   extractCompanionCommandQuestion,
   extractMainCommandText,
   isCatchupCommand,
+  isCatchupRefreshCommand,
 } from "../../lib/chat/companion-question.ts";
 import { resolveCurrentUserIdentity } from "../../lib/chat/current-user-identity.ts";
 import type { ControlUiFollowUpMode } from "../../lib/chat/follow-up-mode.ts";
@@ -250,7 +251,10 @@ export async function handleSendChat(
           }
         }
         await (companionCatchup
-          ? host.openSessionCompanion?.(question, { mode: "catchup" })
+          ? host.openSessionCompanion?.(question, {
+              mode: "catchup",
+              ...(isCatchupRefreshCommand(userMessage) ? { refresh: true } : {}),
+            })
           : host.openSessionCompanion?.(question));
       });
       return undefined;

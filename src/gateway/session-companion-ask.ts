@@ -10,6 +10,7 @@ import {
 } from "../agents/admitted-run-context.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { buildBtwCliPrompt } from "../agents/btw-prompts.js";
+import { catchupCoverageKey, createKeptCatchupStore } from "../agents/catchup-kept.js";
 import type { PreparedCliRunContext } from "../agents/cli-runner/types.js";
 import type { InternalSessionEffectsTarget } from "../agents/internal-session-effects.js";
 import { withSessionManagerWrite } from "../agents/sessions/session-manager-write-admission.js";
@@ -82,6 +83,8 @@ export type SessionCompanionAskResult = {
   answer: string;
   ts: number;
   catchup?: SessionCompanionCatchup;
+  /** True when a catch-up was returned from the kept one without a model run. */
+  kept?: boolean;
 };
 
 export type SessionCompanionAskDeps = {
@@ -520,6 +523,9 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
   const setTimeoutFn = params.setTimeoutFn ?? setTimeout;
   const clearTimeoutFn = params.clearTimeoutFn ?? clearTimeout;
   const activeAsks = new Map<string, SessionCompanionActiveAsk>();
+  // Last catch-up per session. It outlives the Side chat thread (close, reload)
+  // but not the Gateway process.
+  const keptCatchups = createKeptCatchupStore<SessionCompanionExchange>();
   const admissions: Array<{ connId: string; admittedAt: number }> = [];
 
   const resolveTarget = (sessionKey: string, agentId: string) => {
@@ -604,6 +610,8 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
     sessionKey: string;
     question?: string;
     mode?: SessionCompanionAskMode;
+    /** Catch-up only: run again even when nothing new arrived since the kept one. */
+    refresh?: boolean;
     connId: string;
     assertSourceCurrent?: () => void;
     signal?: AbortSignal;
@@ -657,7 +665,8 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
       );
     }
 
-    admissions.push({ connId: request.connId, admittedAt });
+    const admission = { connId: request.connId, admittedAt };
+    admissions.push(admission);
     const controller = new AbortController();
     const activeAsk: SessionCompanionActiveAsk = { controller };
     activeAsks.set(threadKey, activeAsk);
@@ -726,6 +735,7 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
       // Catch-up always reads fresh rows; its prompt carries every message since
       // the owner's last one, so it skips the cached reference and prior exchanges.
       let catchup: ReturnType<typeof prepareSessionCompanionCatchup> | undefined;
+      let coverageKey: string | undefined;
       if (catchupMode) {
         const read = catchupReader({ agentId, sessionKey });
         if (read.kind === "missing") {
@@ -742,6 +752,28 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
           rows: read.rows,
           truncated: read.truncated,
         });
+        coverageKey = catchupCoverageKey(read.sessionId, catchup.index);
+        const kept = request.refresh ? undefined : keptCatchups.get(threadKey, coverageKey);
+        if (kept) {
+          // No model run, so the kept answer does not count toward the rate limit.
+          const admissionIndex = admissions.indexOf(admission);
+          if (admissionIndex >= 0) {
+            admissions.splice(admissionIndex, 1);
+          }
+          // A closed or reloaded Side chat starts a new thread; give it the kept
+          // exchange so follow-ups still see it.
+          if (!thread.exchanges.includes(kept)) {
+            thread.exchanges.push(kept);
+            trimSessionCompanionExchanges(thread.exchanges);
+          }
+          thread.lastUsedAt = params.now();
+          return {
+            answer: kept.answer,
+            ts: kept.ts,
+            ...(kept.catchup ? { catchup: kept.catchup } : {}),
+            kept: true,
+          };
+        }
       }
       const messages: SessionCompanionPromptMessage[] = catchup
         ? [{ role: "user", content: catchup.question, ts: admittedAt }]
@@ -799,6 +831,9 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
       };
       thread.exchanges.push(exchange);
       trimSessionCompanionExchanges(thread.exchanges);
+      if (coverageKey) {
+        keptCatchups.set(threadKey, coverageKey, exchange);
+      }
       if (!catchup) {
         thread.lastNoteSequence = delta.lastSequence;
       }

@@ -21,6 +21,7 @@ export type SessionCompanionService = {
     sessionKey: string;
     question?: string;
     mode?: SessionCompanionAskMode;
+    refresh?: boolean;
     connId: string;
     assertSourceCurrent?: () => void;
     signal?: AbortSignal;

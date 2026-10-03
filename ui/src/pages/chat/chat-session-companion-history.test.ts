@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
-import { ChatSessionCompanionThreads } from "./chat-session-companion.ts";
+import {
+  type ChatSessionCompanionAsk,
+  ChatSessionCompanionThreads,
+} from "./chat-session-companion.ts";
 
 const unavailable = async () => {
   throw new Error("Side chat timed out.");
@@ -387,5 +390,22 @@ describe("Side chat turn history", () => {
       status: "answered",
       answer: "Recovered",
     });
+  });
+
+  it("moves a kept catch-up to the bottom and passes refresh through", async () => {
+    const threads = new ChatSessionCompanionThreads();
+    const ask = vi.fn<ChatSessionCompanionAsk>(async () => ({ answer: "Caught up", ts: 5 }));
+    await threads.submit("one", "", ask, null, "catchup");
+    await threads.submit("one", "Why?", answered("Because", 6));
+    ask.mockResolvedValueOnce({ answer: "Caught up", ts: 5, kept: true });
+
+    await threads.submit("one", "", ask, null, "catchup");
+
+    expect(questions(threads)).toEqual(["Why?", "/catchup"]);
+    expect(threads.view("one").turns.at(-1)).toMatchObject({ status: "answered", kept: true });
+    expect(ask).toHaveBeenLastCalledWith("one", "/catchup", "catchup", undefined);
+
+    await threads.submit("one", "", ask, null, "catchup", { refresh: true });
+    expect(ask).toHaveBeenLastCalledWith("one", "/catchup", "catchup", { refresh: true });
   });
 });

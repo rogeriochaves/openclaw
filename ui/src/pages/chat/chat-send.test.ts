@@ -3972,6 +3972,18 @@ describe("handleSendChat", () => {
     expect(host.chatMessage).toBe("");
   });
 
+  it("routes /catchup refresh to a Side chat catch-up that runs again", async () => {
+    const openSessionCompanion = vi.fn();
+    const host = makeChatHost({ chatMessage: "/catchup refresh", openSessionCompanion });
+
+    await handleSendChat(host);
+
+    expect(openSessionCompanion).toHaveBeenCalledExactlyOnceWith("", {
+      mode: "catchup",
+      refresh: true,
+    });
+  });
+
   it("sends /main as plain text with the open side thread attached", async () => {
     const sideChat = createSideChatAttachment("Owner: why?\nSide assistant: because.");
     const host = makeChatHost({

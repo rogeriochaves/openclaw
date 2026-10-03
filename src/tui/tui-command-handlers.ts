@@ -574,8 +574,8 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       }
     },
     catchup: async (args, raw) => {
-      if (args) {
-        chatLog.addSystem("Usage: /catchup");
+      if (args && args.trim().toLowerCase() !== "refresh") {
+        chatLog.addSystem("Usage: /catchup [refresh]");
       } else {
         await sendMessage(raw);
       }

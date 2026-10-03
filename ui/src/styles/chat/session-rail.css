@@ -340,6 +340,15 @@ openclaw-chat-session-rail {
   justify-self: start;
 }
 
+.chat-session-rail__catchup-refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
 .chat-session-rail__exchange--pending .chat-session-rail__hint {
   animation: chat-session-rail-pending-pulse 1.4s ease-in-out infinite;
 }

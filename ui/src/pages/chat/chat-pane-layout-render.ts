@@ -237,7 +237,8 @@ export abstract class ChatPaneLayoutRender extends ChatPaneBrowserAnnotationRend
       companionFocusRequest: this.sessionCompanionFocusRequest,
       companionPresented,
       onCompanionSubmit: (question) => void this.submitSessionCompanionQuestion(question),
-      onCompanionCatchup: () => void this.submitSessionCompanionQuestion("", "catchup"),
+      onCompanionCatchup: (options) =>
+        void this.submitSessionCompanionQuestion("", "catchup", options?.refresh === true),
       onCompanionSendToMain: (text) => void this.sendSessionCompanionToMain(text),
       onCompanionOpenReference: (entryId) => {
         this.revealMainChatBesideCompanion();

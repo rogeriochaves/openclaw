@@ -15,6 +15,8 @@ export type LocalRunState = {
   question?: string;
   /** Set when the side run is /catchup rather than a /btw question. */
   sideKind?: "catchup";
+  /** `/catchup refresh`: skip the kept catch-up and run again. */
+  sideRefresh?: boolean;
   finishing: boolean;
   lifecycleEnded: boolean;
   lifecycleStopReason?: string;

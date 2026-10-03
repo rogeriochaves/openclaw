@@ -16448,17 +16448,20 @@ public struct SessionsCompanionAskParams: Codable, Sendable {
     public let agentid: String?
     public let question: String?
     public let mode: String?
+    public let refresh: Bool?
 
     public init(
         sessionkey: String,
         agentid: String? = nil,
         question: String? = nil,
-        mode: String? = nil)
+        mode: String? = nil,
+        refresh: Bool? = nil)
     {
         self.sessionkey = sessionkey
         self.agentid = agentid
         self.question = question
         self.mode = mode
+        self.refresh = refresh
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -16466,6 +16469,7 @@ public struct SessionsCompanionAskParams: Codable, Sendable {
         case agentid = "agentId"
         case question
         case mode
+        case refresh
     }
 }
 
@@ -16473,15 +16477,18 @@ public struct SessionsCompanionAskResult: Codable, Sendable {
     public let answer: String
     public let ts: Int
     public let catchup: SessionCompanionCatchup?
+    public let kept: Bool?
 
     public init(
         answer: String,
         ts: Int,
-        catchup: SessionCompanionCatchup? = nil)
+        catchup: SessionCompanionCatchup? = nil,
+        kept: Bool? = nil)
     {
         self.answer = answer
         self.ts = ts
         self.catchup = catchup
+        self.kept = kept
     }
 }
 

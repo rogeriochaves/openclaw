@@ -823,7 +823,7 @@ describe("session companion catch-up", () => {
     expect(call?.timeoutMs).toBe(120_000);
     expect(call?.systemPrompt).toContain("Reply with only the JSON object");
     expect(call?.messages).toHaveLength(1);
-    expect(call?.messages[0]?.content).toContain("/catchup: I was away. Catch me up.");
+    expect(call?.messages[0]?.content).toContain("I was away and want to catch up on this conversation.");
     expect(call?.messages[0]?.content).toContain("Need your approval to deploy.");
     expect(result.catchup).toMatchObject({
       ownerMessageFound: true,
@@ -842,7 +842,7 @@ describe("session companion catch-up", () => {
     expect(result.answer).toContain("Catch-up since your message at");
     expect(result.answer).toContain("Waiting on you");
 
-    // A second catch-up reads rows again instead of reusing a cache.
+    // A second catch-up reads rows again to check for new messages.
     await harness.service.ask({
       agentId: "main",
       sessionKey: "agent:main:main",
@@ -854,9 +854,65 @@ describe("session companion catch-up", () => {
       agentId: "main",
       sessionKey: "agent:main:main",
     }).exchanges;
-    expect(exchanges).toHaveLength(2);
+    expect(exchanges).toHaveLength(1);
     expect(exchanges[0]).toMatchObject({ question: "/catchup", answer: result.answer });
     expect(exchanges[0]?.catchup).toEqual(result.catchup);
+    harness.service.dispose();
+  });
+
+  it("returns the kept catch-up until a new row or a refresh", async () => {
+    vi.useFakeTimers();
+    let current = rows();
+    let answers = 0;
+    const harness = createHarness({
+      catchupReader: () => ({
+        kind: "ready",
+        sessionId: "session-1",
+        rows: current,
+        truncated: false,
+      }),
+      run: async (params) => {
+        answers += 1;
+        return params.timeoutMs === 120_000 ? catchupAnswer : `side answer ${answers}`;
+      },
+    });
+    const target = { agentId: "main", sessionKey: "agent:main:main", connId: "c" };
+    const catchup = (refresh?: boolean) =>
+      harness.service.ask({ ...target, mode: "catchup", ...(refresh ? { refresh } : {}) });
+
+    const first = await catchup();
+    // A side-chat follow-up never enters the session, so it does not count as new.
+    await harness.service.ask({ ...target, question: "What tests ran?" });
+    // Closing the Side chat drops its thread but not the kept catch-up.
+    harness.service.reset({ agentId: "main", sessionKey: "agent:main:main" });
+    const repeat = await catchup();
+
+    expect(harness.run).toHaveBeenCalledTimes(2);
+    expect(repeat).toEqual({ ...first, kept: true });
+    expect(Value.Check(SessionsCompanionAskResultSchema, repeat)).toBe(true);
+    expect(
+      harness.service.state({ agentId: "main", sessionKey: "agent:main:main" }).exchanges,
+    ).toMatchObject([{ question: "/catchup", answer: first.answer, ts: first.ts }]);
+
+    current = [
+      ...rows(),
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Deployed." }],
+          timestamp: 4_000,
+        },
+        entryId: "e-3",
+      },
+    ];
+    const afterNewRow = await catchup();
+    expect(harness.run).toHaveBeenCalledTimes(3);
+    expect(afterNewRow.kept).toBeUndefined();
+    expect(harness.run.mock.calls[2]?.[0]?.messages[0]?.content).toContain("Deployed.");
+
+    const refreshed = await catchup(true);
+    expect(harness.run).toHaveBeenCalledTimes(4);
+    expect(refreshed.kept).toBeUndefined();
     harness.service.dispose();
   });
 

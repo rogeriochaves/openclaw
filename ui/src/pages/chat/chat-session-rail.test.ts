@@ -1008,5 +1008,37 @@ describe("ChatSessionRailElement", () => {
     expect(onCatchup).toHaveBeenCalledOnce();
     expect(onDraftChange).toHaveBeenCalledWith("");
     expect(onSubmit).not.toHaveBeenCalled();
+
+    element.companion = { ...companion, draft: "/catchup refresh" };
+    await element.updateComplete;
+    element.querySelector("form")?.dispatchEvent(new SubmitEvent("submit", { bubbles: true }));
+    expect(onCatchup).toHaveBeenLastCalledWith({ refresh: true });
+  });
+
+  it("offers a refresh on the latest catch-up and says when it was kept", async () => {
+    const onCatchup = vi.fn();
+    const element = await mount({
+      onCatchup,
+      companion: {
+        turns: [
+          {
+            question: "/catchup",
+            mode: "catchup",
+            status: "answered",
+            answer: "Catch-up since your message",
+            ts: 350_000,
+            kept: true,
+            catchup: catchupFixture(),
+          },
+        ],
+        loading: false,
+        draft: "",
+      },
+    });
+
+    const refresh = element.querySelector(".chat-session-rail__catchup-refresh");
+    expect(refresh?.textContent).toContain("Nothing new since this catch-up.");
+    refresh?.querySelector<HTMLButtonElement>("button")?.click();
+    expect(onCatchup).toHaveBeenCalledExactlyOnceWith({ refresh: true });
   });
 });

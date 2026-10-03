@@ -35,6 +35,8 @@ import {
   buildSideThreadQuestion,
   clearSideThread,
   hasSideAnswerBanner,
+  keepCatchup,
+  readKeptCatchup,
   readQuotedText,
   readSideThread,
   recordSideThreadExchange,
@@ -42,7 +44,7 @@ import {
 } from "./side-thread.js";
 
 const BTW_USAGE = "Usage: /btw [side question]";
-const CATCHUP_USAGE = "Usage: /catchup";
+const CATCHUP_USAGE = "Usage: /catchup [refresh]";
 const MAIN_USAGE = "Usage: /main <message>";
 
 type SideReplyBtw = NonNullable<ReplyPayload["btw"]>;
@@ -320,11 +322,29 @@ function resolveCatchupReplyTarget(
   return lastHuman.channelMessageId;
 }
 
-/** Command handler for /catchup: a side answer covering everything since the owner's last message. */
+/** Remembers a catch-up for side-chat follow-ups unless it is already the newest exchange. */
+function recordCatchupExchange(sessionKey: string, text: string): void {
+  const newest = readSideThread(sessionKey).at(-1);
+  if (newest?.kind === "catchup" && newest.answer === text.trim()) {
+    return;
+  }
+  recordSideThreadExchange(sessionKey, {
+    kind: "catchup",
+    question: CATCHUP_SIDE_QUESTION,
+    answer: text,
+  });
+}
+
+/**
+ * Command handler for /catchup: a side answer covering everything since the
+ * owner's last message. A repeat with nothing new in the session returns the
+ * kept answer without a model run; `/catchup refresh` always runs again.
+ */
 export const handleCatchupCommand: CommandHandler = defineAuthorizedTextCommand(
   { label: "/catchup", match: (body) => extractCatchupArgs(body) },
   async (params, args) => {
-    if (args) {
+    const refresh = normalizeLowercaseStringOrEmpty(args) === "refresh";
+    if (args && !refresh) {
       return commandReply(CATCHUP_USAGE);
     }
     const replyBtw: SideReplyBtw = { question: CATCHUP_SIDE_QUESTION, kind: "catchup" };
@@ -340,6 +360,19 @@ export const handleCatchupCommand: CommandHandler = defineAuthorizedTextCommand(
         sessionKey: params.sessionKey,
         ...(params.storePath ? { storePath: params.storePath } : {}),
       });
+      const replyToId = resolveCatchupReplyTarget(params, catchup.index);
+      const kept = refresh ? undefined : readKeptCatchup(params.sessionKey, catchup.coverageKey);
+      if (kept) {
+        recordCatchupExchange(params.sessionKey, kept);
+        return {
+          shouldContinue: false,
+          reply: {
+            text: kept,
+            btw: replyBtw,
+            ...(replyToId ? { replyToId, replyToTag: true } : {}),
+          },
+        };
+      }
       const reply = await runSideQuestionCommand(params, {
         sessionEntry: prepared.sessionEntry,
         question: catchup.question,
@@ -353,12 +386,8 @@ export const handleCatchupCommand: CommandHandler = defineAuthorizedTextCommand(
         throw new Error("No catch-up answer generated.");
       }
       const text = catchup.render(raw);
-      recordSideThreadExchange(params.sessionKey, {
-        kind: "catchup",
-        question: CATCHUP_SIDE_QUESTION,
-        answer: text,
-      });
-      const replyToId = resolveCatchupReplyTarget(params, catchup.index);
+      keepCatchup(params.sessionKey, catchup.coverageKey, text);
+      recordCatchupExchange(params.sessionKey, text);
       return {
         shouldContinue: false,
         reply: {

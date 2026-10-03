@@ -75,7 +75,7 @@ type SidebarPanelDefinitionParams = {
   companionPresented: boolean;
   companionFocusRequest: (() => boolean) | undefined;
   onCompanionSubmit: (question: string | ChatSessionCompanionTurn) => void;
-  onCompanionCatchup: () => void;
+  onCompanionCatchup: (options?: { refresh?: boolean }) => void;
   onCompanionSendToMain: (text: string) => void;
   onCompanionOpenReference: (entryId: string) => void;
   onCompanionDraftChange: (draft: string) => void;

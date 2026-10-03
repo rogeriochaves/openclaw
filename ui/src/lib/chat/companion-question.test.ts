@@ -4,6 +4,7 @@ import {
   extractCompanionCommandQuestion,
   extractMainCommandText,
   isCatchupCommand,
+  isCatchupRefreshCommand,
 } from "./companion-question.ts";
 
 describe("companion selection questions", () => {
@@ -20,6 +21,9 @@ describe("companion selection questions", () => {
   it("recognizes /catchup and extracts /main text", () => {
     expect(isCatchupCommand(" /catchup ")).toBe(true);
     expect(isCatchupCommand("/catchupnow")).toBe(false);
+    expect(isCatchupRefreshCommand("/catchup refresh")).toBe(true);
+    expect(isCatchupRefreshCommand("/catchup: Refresh ")).toBe(true);
+    expect(isCatchupRefreshCommand("/catchup")).toBe(false);
     expect(extractMainCommandText("/main: ship it")).toBe("ship it");
     expect(extractMainCommandText("/main")).toBe("");
     expect(extractMainCommandText("/mainline")).toBeNull();

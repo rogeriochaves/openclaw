@@ -175,13 +175,15 @@ export const SessionCompanionExchangeSchema = closedObject({
 
 /**
  * Asks the read-only companion about one session and its workspace. Mode
- * `catchup` runs the fixed catch-up prompt and ignores the question.
+ * `catchup` runs the fixed catch-up prompt and ignores the question. A repeat
+ * catch-up with no new session messages returns the kept one unless `refresh`.
  */
 export const SessionsCompanionAskParamsSchema = closedObject({
   sessionKey: NonEmptyString,
   agentId: Type.Optional(NonEmptyString),
   question: Type.Optional(Type.String({ minLength: 1, maxLength: 400 })),
   mode: Type.Optional(Type.Literal("catchup")),
+  refresh: Type.Optional(Type.Boolean()),
 });
 
 /** Companion answer returned only to the requesting operator. */
@@ -189,6 +191,8 @@ export const SessionsCompanionAskResultSchema = closedObject({
   answer: SessionCompanionAnswerSchema,
   ts: Type.Integer({ minimum: 0 }),
   catchup: Type.Optional(SessionCompanionCatchupSchema),
+  /** True when the catch-up is the kept one, returned without a model run. */
+  kept: Type.Optional(Type.Boolean()),
 });
 
 /** Selects the in-memory companion thread for one session. */

@@ -24,14 +24,17 @@ export type ChatSessionCompanionAsk = (
   sessionKey: string,
   question: string,
   mode?: ChatSessionCompanionMode,
+  options?: { refresh?: boolean },
 ) => Promise<SessionsCompanionAskResult>;
 
 export type ChatSessionCompanionTurn = {
   question: string;
   mode?: ChatSessionCompanionMode;
+  /** Catch-up asked to run again even when nothing is new. */
+  refresh?: boolean;
 } & (
   | { status: "pending" }
-  | ({ status: "answered" } & SessionCompanionExchange)
+  | ({ status: "answered"; kept?: boolean } & SessionCompanionExchange)
   | {
       status: "failed";
       hint:
@@ -195,6 +198,7 @@ export class ChatSessionCompanionThreads {
     ask: ChatSessionCompanionAsk,
     agentId?: string | null,
     mode?: ChatSessionCompanionMode,
+    options: { refresh?: boolean } = {},
   ): Promise<void> {
     const targetSessionKey = sessionKey.trim();
     const turnMode = typeof question === "string" ? mode : question.mode;
@@ -214,7 +218,12 @@ export class ChatSessionCompanionThreads {
     }
     const turn: ChatSessionCompanionTurn =
       typeof question === "string"
-        ? { question: normalized, ...(turnMode ? { mode: turnMode } : {}), status: "pending" }
+        ? {
+            question: normalized,
+            ...(turnMode ? { mode: turnMode } : {}),
+            ...(turnMode === "catchup" && options.refresh ? { refresh: true } : {}),
+            status: "pending",
+          }
         : question;
     if (
       typeof question !== "string" &&
@@ -236,7 +245,7 @@ export class ChatSessionCompanionThreads {
     this.notify();
     try {
       const result = await (turnMode
-        ? ask(targetSessionKey, normalized, turnMode)
+        ? ask(targetSessionKey, normalized, turnMode, turn.refresh ? { refresh: true } : undefined)
         : ask(targetSessionKey, normalized));
       if (this.submissionTokens.get(key) !== token) {
         return;
@@ -246,7 +255,22 @@ export class ChatSessionCompanionThreads {
         answer: result.answer,
         ts: result.ts,
         ...(result.catchup ? { catchup: result.catchup } : {}),
+        ...(result.kept ? { kept: true } : {}),
       });
+      if (result.kept) {
+        // The kept catch-up moves to the bottom instead of showing twice.
+        const duplicates = thread.turns.filter(
+          (other) =>
+            other !== turn &&
+            other.status === "answered" &&
+            other.question === normalized &&
+            other.ts === result.ts,
+        );
+        thread.turns = thread.turns.filter((other) => !duplicates.includes(other));
+        for (const duplicate of duplicates) {
+          thread.responses.delete(duplicate);
+        }
+      }
       thread.responses.set(turn, exchangeKey({ question: normalized, ...result }));
       thread.responses = new Map([...thread.responses].slice(-MAX_COMPANION_EXCHANGES));
     } catch (error) {
@@ -320,13 +344,16 @@ export function requestSessionCompanionAnswer(
   question: string,
   agentId?: string | null,
   mode?: ChatSessionCompanionMode,
+  options?: { refresh?: boolean },
 ): Promise<SessionsCompanionAskResult> {
   return client.request<SessionsCompanionAskResult>(
     "sessions.companion.ask",
     {
       sessionKey,
       ...(agentId ? { agentId } : {}),
-      ...(mode === "catchup" ? { mode } : { question }),
+      ...(mode === "catchup"
+        ? { mode, ...(options?.refresh ? { refresh: true } : {}) }
+        : { question }),
     },
     { timeoutMs: mode === "catchup" ? COMPANION_CATCHUP_TIMEOUT_MS : COMPANION_ASK_TIMEOUT_MS },
   );

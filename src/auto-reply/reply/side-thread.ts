@@ -2,6 +2,7 @@
 // used to continue the side chat or to bring it into the main conversation.
 // Process-local by design: a Gateway restart ends every side thread.
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { createKeptCatchupStore } from "../../agents/catchup-kept.js";
 
 export type SideThreadKind = "btw" | "catchup";
 
@@ -25,6 +26,17 @@ const SIDE_ANSWER_BANNER_RE =
   /^(?:BTW\s+Question:|Catch-up since your message|Catch-up on recent messages)/u;
 
 const threads = new Map<string, SideThreadExchange[]>();
+// Last rendered /catchup per session, returned again while nothing new arrives.
+const keptCatchups = createKeptCatchupStore<string>();
+
+/** The kept catch-up text when it covered exactly `coverageKey`. */
+export function readKeptCatchup(sessionKey: string, coverageKey: string): string | undefined {
+  return keptCatchups.get(sessionKey, coverageKey);
+}
+
+export function keepCatchup(sessionKey: string, coverageKey: string, text: string): void {
+  keptCatchups.set(sessionKey, coverageKey, text);
+}
 
 function exchangeChars(exchange: SideThreadExchange): number {
   return exchange.question.length + exchange.answer.length;
@@ -92,9 +104,10 @@ export function clearSideThread(sessionKey: string): void {
   threads.delete(sessionKey);
 }
 
-/** Test-only reset of every side thread. */
+/** Test-only reset of every side thread and kept catch-up. */
 export function resetSideThreadsForTest(): void {
   threads.clear();
+  keptCatchups.clear();
 }
 
 // Channels re-render markdown and may add prefixes, so compare loosely.

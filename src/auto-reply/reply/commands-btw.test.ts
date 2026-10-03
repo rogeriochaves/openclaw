@@ -492,10 +492,39 @@ describe("handleCatchupCommand", () => {
     });
   });
 
+  it("returns the kept catch-up until a new message or a refresh", async () => {
+    runBtwSideQuestionMock.mockResolvedValue({ text: "first answer" });
+    const first = await handleCatchupCommand(buildSessionParams("/catchup"), true);
+    runBtwSideQuestionMock.mockResolvedValue({ text: "second answer" });
+
+    const repeat = await handleCatchupCommand(buildSessionParams("/catchup"), true);
+
+    expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(1);
+    expect(repeat).toEqual(first);
+    expect(readSideThread("agent:main:main")).toHaveLength(1);
+
+    const read = catchupRead();
+    read.rows.push({
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Also merged PR 12." }],
+        timestamp: CATCHUP_T0 + 120_000,
+      },
+    });
+    readCatchupTranscriptRowsMock.mockReturnValue(read);
+    const afterNewRow = await handleCatchupCommand(buildSessionParams("/catchup"), true);
+    expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(2);
+    expect(afterNewRow?.reply?.text).toContain("second answer");
+
+    const refreshed = await handleCatchupCommand(buildSessionParams("/catchup refresh"), true);
+    expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(3);
+    expect(refreshed?.reply?.text).toContain("second answer");
+  });
+
   it("returns usage for arguments and refuses restricted tool policies", async () => {
     expect(await handleCatchupCommand(buildSessionParams("/catchup now"), true)).toEqual({
       shouldContinue: false,
-      reply: { text: "Usage: /catchup" },
+      reply: { text: "Usage: /catchup [refresh]" },
     });
     const params = buildSessionParams("/catchup");
     params.ctx.ConversationToolPolicy = { deny: ["exec"] };

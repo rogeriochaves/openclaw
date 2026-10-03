@@ -5,6 +5,7 @@ import { QuestionAnswerUnconfirmedError } from "../agents/harness/gateway-questi
 import type { ModelCatalogEntry } from "../agents/model-catalog.types.js";
 import { resolveThinkingDefault } from "../agents/model-thinking-default.js";
 import type { LoadPreparedModelCatalogParams } from "../agents/prepared-model-catalog.js";
+import { resetSideThreadsForTest } from "../auto-reply/reply/side-thread.js";
 import { isEmbeddedMode, setEmbeddedMode } from "../infra/embedded-mode.js";
 import {
   clearEmbeddedPluginApprovalBroker,
@@ -3708,6 +3709,7 @@ describe("EmbeddedTuiBackend", () => {
     });
     prepareCatchupSideQuestionMock.mockReturnValueOnce({
       question: "catch-up prompt",
+      coverageKey: "covered-first-run",
       contextMessages: [],
       render: (raw: string) => `Catch-up on recent messages\n\n${raw}`,
     });
@@ -3750,6 +3752,54 @@ describe("EmbeddedTuiBackend", () => {
         },
       }),
     );
+  });
+
+  it("returns the kept local /catchup until a new message or a refresh", async () => {
+    resetSideThreadsForTest();
+    const loadSessionEntryDefault = loadSessionEntryMock.getMockImplementation();
+    loadSessionEntryMock.mockImplementation(() => ({
+      cfg: {},
+      agentId: "main",
+      canonicalKey: "agent:main:main",
+      storePath: "/tmp/openclaw-sessions.json",
+      store: {},
+      entry: { sessionId: "session-main", updatedAt: Date.now() },
+    }));
+    let coverageKey = "covered-a";
+    prepareCatchupSideQuestionMock.mockImplementation(() => ({
+      question: "catch-up prompt",
+      coverageKey,
+      contextMessages: [],
+      render: (raw: string) => `Catch-up\n\n${raw}`,
+    }));
+    let answers = 0;
+    runBtwSideQuestionMock.mockImplementation(async () => ({ text: `answer ${++answers}` }));
+    const backend = new EmbeddedTuiBackend();
+    const events = captureBackendEvents(backend);
+    backend.start();
+    const catchup = async (message: string, runId: string) => {
+      await backend.sendChat({ sessionKey: "agent:main:main", message, runId, timeoutMs: 0 });
+      const sideResult = () =>
+        events.find(
+          (event) =>
+            event.event === "chat.side_result" &&
+            (event.payload as { runId?: string }).runId === runId,
+        );
+      await vi.waitFor(() => expect(sideResult()).toBeDefined());
+      return (sideResult()?.payload as { text?: string } | undefined)?.text;
+    };
+
+    expect(await catchup("/catchup", "run-kept-1")).toBe("Catch-up\n\nanswer 1");
+    expect(await catchup("/catchup", "run-kept-2")).toBe("Catch-up\n\nanswer 1");
+    expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(1);
+
+    coverageKey = "covered-b";
+    expect(await catchup("/catchup", "run-kept-3")).toBe("Catch-up\n\nanswer 2");
+    expect(await catchup("/catchup refresh", "run-kept-4")).toBe("Catch-up\n\nanswer 3");
+    expect(runBtwSideQuestionMock).toHaveBeenCalledTimes(3);
+    expect(agentCommandFromIngressMock).not.toHaveBeenCalled();
+    prepareCatchupSideQuestionMock.mockReset();
+    loadSessionEntryMock.mockImplementation(loadSessionEntryDefault!);
   });
 
   it("emits side-result events for local /btw runs", async () => {

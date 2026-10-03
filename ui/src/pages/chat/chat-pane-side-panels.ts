@@ -4,6 +4,7 @@ import { sendSessionObserverVisibility } from "./chat-observer.ts";
 import { ChatPaneBase } from "./chat-pane-base.ts";
 import {
   ChatSessionCompanionThreads,
+  type ChatSessionCompanionAsk,
   type ChatSessionCompanionMode,
   type ChatSessionCompanionTurn,
   formatSideChatContext,
@@ -147,12 +148,13 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
     pageState: ChatPageHost,
     question: string,
     mode?: ChatSessionCompanionMode,
+    refresh = false,
   ): Promise<void> {
     const { ownsFocus, requestFocus } = this.captureSessionCompanionFocus(pageState);
     // The first lazy mount and the completed answer share the same input intent.
     this.sessionCompanionFocusRequest = requestFocus;
     this.requestUpdate();
-    await this.submitSessionCompanionQuestion(question, mode);
+    await this.submitSessionCompanionQuestion(question, mode, refresh);
     if (ownsFocus()) {
       this.sessionCompanionFocusRequest = requestFocus;
       this.requestUpdate();
@@ -162,6 +164,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
   protected readonly submitSessionCompanionQuestion = async (
     question: string | ChatSessionCompanionTurn,
     mode?: ChatSessionCompanionMode,
+    refresh = false,
   ) => {
     const state = this.state;
     if (!state || !state.sessionKey) {
@@ -181,9 +184,11 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
       }
       return;
     }
-    const ask = (key: string, value: string, askMode?: ChatSessionCompanionMode) =>
-      requestSessionCompanionAnswer(client, key, value, agentId, askMode);
-    await this.sessionCompanionThreads.submit(sessionKey, question, ask, agentId, mode);
+    const ask: ChatSessionCompanionAsk = (key, value, askMode, askOptions) =>
+      requestSessionCompanionAnswer(client, key, value, agentId, askMode, askOptions);
+    await this.sessionCompanionThreads.submit(sessionKey, question, ask, agentId, mode, {
+      refresh,
+    });
   };
 
   /** Side exchanges of the selected session as a text attachment for the main agent. */

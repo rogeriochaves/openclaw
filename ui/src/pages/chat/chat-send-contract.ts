@@ -94,7 +94,7 @@ export type ChatHost = ChatInputHistoryState &
     /** Control UI route for /btw, /side, and /catchup; server/TUI command handling remains unchanged. */
     openSessionCompanion?: (
       question: string,
-      options?: { mode?: "catchup" },
+      options?: { mode?: "catchup"; refresh?: boolean },
     ) => Promise<void> | void;
     /** Current side-chat thread as a text attachment for /main, or null when it has no answers. */
     buildSideChatAttachment?: () => ChatAttachment | null;

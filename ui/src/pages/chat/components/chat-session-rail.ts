@@ -13,7 +13,11 @@ import { renderPanelLoadingSkeleton } from "../../../components/panel-loading-sk
 import "../../../components/tooltip.ts";
 import "../../../components/web-awesome.ts";
 import { t } from "../../../i18n/index.ts";
-import { extractMainCommandText, isCatchupCommand } from "../../../lib/chat/companion-question.ts";
+import {
+  extractMainCommandText,
+  isCatchupCommand,
+  isCatchupRefreshCommand,
+} from "../../../lib/chat/companion-question.ts";
 import { formatDurationCompact } from "../../../lib/format-duration.ts";
 import { formatTimeAgo, formatTimeMs } from "../../../lib/format.ts";
 import { OpenClawLightDomElement } from "../../../lit/openclaw-element.ts";
@@ -229,7 +233,7 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
   @property({ attribute: false }) consumedCommandGeneration = 0;
   @property({ attribute: false }) onCommandConsumed?: (generation: number) => void;
   @property({ attribute: false }) onSubmit?: (question: string | ChatSessionCompanionTurn) => void;
-  @property({ attribute: false }) onCatchup?: () => void;
+  @property({ attribute: false }) onCatchup?: (options?: { refresh?: boolean }) => void;
   @property({ attribute: false }) onSendToMain?: (text: string) => void;
   @property({ attribute: false }) onOpenReference?: (entryId: string) => void;
   @property({ attribute: false }) onDraftChange?: (draft: string) => void;
@@ -379,7 +383,7 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
     }
     if (isCatchupCommand(question)) {
       this.onDraftChange?.("");
-      this.onCatchup?.();
+      this.onCatchup?.(isCatchupRefreshCommand(question) ? { refresh: true } : undefined);
       return;
     }
     this.onSubmit?.(question);
@@ -575,6 +579,25 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
                           time: formatTimeMs(turn.ts, { hour: "numeric", minute: "2-digit" }, ""),
                         })}
                       </time>
+                      ${
+                        isCatchupTurn(turn) && turn === turns.at(-1)
+                          ? html`<div class="chat-session-rail__catchup-refresh">
+                              ${
+                                turn.kept
+                                  ? html`<span>${t("chat.rail.catchup.kept")}</span>`
+                                  : nothing
+                              }
+                              <button
+                                class="btn btn--secondary"
+                                type="button"
+                                ?disabled=${pending || !this.connected}
+                                @click=${() => this.onCatchup?.({ refresh: true })}
+                              >
+                                ${t("chat.rail.catchup.refresh")}
+                              </button>
+                            </div>`
+                          : nothing
+                      }
                     `
                   : html`
                       <div class="chat-session-rail__hint">

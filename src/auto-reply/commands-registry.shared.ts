@@ -320,7 +320,14 @@ export function buildBuiltinChatCommands(
       "Catch up on what happened since your last message, without changing session context.",
       "tools",
       "standard",
-      { activeRunSafe: true },
+      {
+        activeRunSafe: true,
+        args: [
+          defineCommandArgument("mode", "refresh to run again even when nothing is new", {
+            choices: ["refresh"],
+          }),
+        ],
+      },
     ),
     defineBuiltinCommand(
       "main",

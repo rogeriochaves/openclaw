@@ -122,8 +122,22 @@ structured summary:
   main run is left untouched. Channels show it under a
   `Catch-up since your message at HH:MM` header instead of the BTW banner.
 - **Time zone.** Times use `agents.defaults.userTimezone`.
+- **Kept answer.** The Gateway keeps the last catch-up per session. Running
+  `/catchup` again with no new message in the session returns it at once,
+  without another model run. Side chat and `/btw` follow-ups do not count as
+  new messages, since they never enter the session; a message in the main
+  conversation (including one sent with `/main`) does. The kept answer is in
+  memory only, so after a Gateway restart the next `/catchup` runs fresh.
 
-In the Control UI, /catchup opens in the Side chat.
+```text
+/catchup refresh
+```
+
+`/catchup refresh` always runs a new catch-up and replaces the kept one.
+
+In the Control UI, /catchup opens in the Side chat. The kept catch-up survives
+closing the Side chat and reloading the page, and the latest catch-up has a
+**Refresh** button.
 
 ## Follow-ups
 
