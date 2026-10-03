@@ -16,6 +16,8 @@ type ChatBroadcastContext = Pick<
 
 type SideResultPayload = {
   kind: "btw";
+  /** "catchup" for /catchup answers; absent for plain /btw. */
+  sideKind?: "catchup";
   runId: string;
   sessionKey: string;
   agentId?: string;
@@ -201,7 +203,7 @@ export function broadcastChatFinal(
 }
 
 export function isBtwReplyPayload(payload: ReplyPayload | undefined): payload is ReplyPayload & {
-  btw: { question: string };
+  btw: NonNullable<ReplyPayload["btw"]>;
   text: string;
 } {
   return (

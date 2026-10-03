@@ -1888,91 +1888,106 @@ describe("gateway server chat", () => {
     });
   });
 
-  test("routes /btw replies through side-result events without transcript injection", async () => {
-    await withMainSessionStore(async () => {
-      await replaceMainTranscriptLines([
-        JSON.stringify({
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "main thread context" }],
-            timestamp: Date.now(),
-          },
-        }),
-      ]);
-      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
-        const [params] = args as [
-          {
-            dispatcher: {
-              sendFinalReply: (payload: { text: string; btw: { question: string } }) => boolean;
-              markComplete: () => void;
-              waitForIdle: () => Promise<void>;
-              getQueuedCounts: () => { final: number; block: number; tool: number };
-            };
-          },
-        ];
-        params.dispatcher.sendFinalReply({
-          text: "323",
-          btw: { question: "what is 17 * 19?" },
+  test.each([
+    {
+      message: "/btw what is 17 * 19?",
+      btw: { question: "what is 17 * 19?" },
+      idempotencyKey: "idem-btw-1",
+    },
+    {
+      message: "/catchup",
+      btw: { question: "/catchup", kind: "catchup" as const },
+      idempotencyKey: "idem-catchup-1",
+    },
+  ])(
+    "routes $message replies through side-result events without transcript injection",
+    async ({ message, btw, idempotencyKey }) => {
+      await withMainSessionStore(async () => {
+        await replaceMainTranscriptLines([
+          JSON.stringify({
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "main thread context" }],
+              timestamp: Date.now(),
+            },
+          }),
+        ]);
+        dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+          const [params] = args as [
+            {
+              dispatcher: {
+                sendFinalReply: (payload: {
+                  text: string;
+                  btw: { question: string; kind?: "catchup" };
+                }) => boolean;
+                markComplete: () => void;
+                waitForIdle: () => Promise<void>;
+                getQueuedCounts: () => { final: number; block: number; tool: number };
+              };
+            },
+          ];
+          params.dispatcher.sendFinalReply({ text: "323", btw });
+          params.dispatcher.markComplete();
+          await params.dispatcher.waitForIdle();
+          return {
+            queuedFinal: true,
+            counts: params.dispatcher.getQueuedCounts(),
+          };
         });
-        params.dispatcher.markComplete();
-        await params.dispatcher.waitForIdle();
-        return {
-          queuedFinal: true,
-          counts: params.dispatcher.getQueuedCounts(),
-        };
-      });
-      const sideResultPromise = onceMessage(
-        ws,
-        (o) =>
-          o.type === "event" &&
-          o.event === "chat.side_result" &&
-          o.payload?.kind === "btw" &&
-          o.payload?.runId === "idem-btw-1",
-        8000,
-      );
-      const finalPromise = onceMessage(
-        ws,
-        (o) =>
-          o.type === "event" &&
-          o.event === "chat" &&
-          o.payload?.state === "final" &&
-          o.payload?.runId === "idem-btw-1",
-        8000,
-      );
+        const sideResultPromise = onceMessage(
+          ws,
+          (o) =>
+            o.type === "event" &&
+            o.event === "chat.side_result" &&
+            o.payload?.kind === "btw" &&
+            o.payload?.runId === idempotencyKey,
+          8000,
+        );
+        const finalPromise = onceMessage(
+          ws,
+          (o) =>
+            o.type === "event" &&
+            o.event === "chat" &&
+            o.payload?.state === "final" &&
+            o.payload?.runId === idempotencyKey,
+          8000,
+        );
 
-      const res = await rpcReq(ws, "chat.send", {
-        sessionKey: "main",
-        message: "/btw what is 17 * 19?",
-        idempotencyKey: "idem-btw-1",
-      });
+        const res = await rpcReq(ws, "chat.send", {
+          sessionKey: "main",
+          message,
+          idempotencyKey,
+        });
 
-      expect(res.ok).toBe(true);
-      await waitForFast(() => {
-        expect(dispatchInboundMessageMock).toHaveBeenCalled();
-      });
-      const sideResult = await sideResultPromise;
-      const finalEvent = await finalPromise;
-      expectRecordFields(sideResult.payload, {
-        kind: "btw",
-        runId: "idem-btw-1",
-        sessionKey: "agent:main:main",
-        question: "what is 17 * 19?",
-        text: "323",
-      });
-      expectRecordFields(finalEvent.payload, {
-        runId: "idem-btw-1",
-        sessionKey: "agent:main:main",
-        state: "final",
-      });
+        expect(res.ok).toBe(true);
+        await waitForFast(() => {
+          expect(dispatchInboundMessageMock).toHaveBeenCalled();
+        });
+        const sideResult = await sideResultPromise;
+        const finalEvent = await finalPromise;
+        expectRecordFields(sideResult.payload, {
+          kind: "btw",
+          runId: idempotencyKey,
+          sessionKey: "agent:main:main",
+          question: btw.question,
+          text: "323",
+        });
+        expect(sideResult.payload?.sideKind).toBe(btw.kind);
+        expectRecordFields(finalEvent.payload, {
+          runId: idempotencyKey,
+          sessionKey: "agent:main:main",
+          state: "final",
+        });
 
-      const historyRes = await rpcReq<{ messages?: unknown[] }>(ws, "chat.history", {
-        sessionKey: "main",
+        const historyRes = await rpcReq<{ messages?: unknown[] }>(ws, "chat.history", {
+          sessionKey: "main",
+        });
+        expect(historyRes.ok).toBe(true);
+        const historyTexts = collectHistoryTextValues(historyRes.payload?.messages ?? []);
+        expect(historyTexts).toEqual(["main thread context"]);
       });
-      expect(historyRes.ok).toBe(true);
-      const historyTexts = collectHistoryTextValues(historyRes.payload?.messages ?? []);
-      expect(historyTexts).toEqual(["main thread context"]);
-    });
-  });
+    },
+  );
 
   test("preserves split fenced-code indentation in /btw side-result events", async () => {
     await withMainSessionStore(async () => {

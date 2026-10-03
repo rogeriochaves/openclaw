@@ -1,6 +1,7 @@
 // Reply payload tests cover internal reply metadata contracts.
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatBtwTextForExternalDelivery,
   isCommandReplyForDelivery,
   isReplyPayloadSessionWriterDeliveryAuthorized,
   isReplyPayloadTerminalContent,
@@ -20,6 +21,21 @@ describe("command reply delivery", () => {
     const marked = { text: "ack" };
     markCommandReplyForDelivery(marked);
     expect(isCommandReplyForDelivery([marked, { text: "unmarked" }])).toBe(false);
+  });
+});
+
+describe("side answer banner", () => {
+  it("adds the BTW banner to /btw answers but not to catch-up answers", () => {
+    expect(formatBtwTextForExternalDelivery({ text: "yes", btw: { question: "safe?" } })).toBe(
+      "BTW\nQuestion: safe?\n\nyes",
+    );
+    const catchup = "Catch-up since your message at 09:00\n\nAll done";
+    expect(
+      formatBtwTextForExternalDelivery({
+        text: catchup,
+        btw: { question: "/catchup", kind: "catchup" },
+      }),
+    ).toBe(catchup);
   });
 });
 

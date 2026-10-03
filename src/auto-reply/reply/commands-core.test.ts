@@ -344,6 +344,23 @@ describe("handleCommands send policy", () => {
     });
   });
 
+  it("keeps an explicit quote target on side answers", async () => {
+    const { handleCommands } = await import("./commands-core.js");
+    const reply = {
+      text: "Catch-up since your message at 09:00",
+      btw: { question: "/catchup", kind: "catchup" as const },
+      replyToId: "wamid-owner",
+      replyToTag: true,
+    };
+    loadCommandHandlersMock.mockReturnValue([
+      vi.fn(async () => ({ shouldContinue: false, reply })),
+    ]);
+
+    const result = await handleCommands(makeParams());
+
+    expect(result).toEqual({ shouldContinue: false, reply: { ...reply, replyToCurrent: false } });
+  });
+
   it.each([
     { sessionKey: "agent:target:main", expectedAgentId: "target" },
     { sessionKey: "global", expectedAgentId: "caller" },

@@ -58,6 +58,8 @@ export type ReplyPayload = {
   interactive?: InteractiveReply;
   btw?: {
     question: string;
+    /** Set for /catchup answers; absent for plain /btw side answers. */
+    kind?: "catchup";
   };
   replyToId?: string;
   replyToTag?: boolean;

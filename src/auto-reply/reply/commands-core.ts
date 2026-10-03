@@ -24,6 +24,14 @@ function normalizeCommandHandlerResult(result: CommandHandlerResult): CommandHan
   if (!result.reply) {
     return result;
   }
+  // A side answer may target an explicit message on purpose (/catchup quotes
+  // the owner's last message); every other command reply stays unthreaded.
+  if (result.reply.btw && result.reply.replyToTag === true && result.reply.replyToId) {
+    return {
+      ...result,
+      reply: copyReplyPayloadMetadata(result.reply, { ...result.reply, replyToCurrent: false }),
+    };
+  }
   return {
     ...result,
     reply: copyReplyPayloadMetadata(result.reply, {

@@ -126,8 +126,10 @@ function buildChatSendBtwSideResult(deliveredReplies: readonly DeliveredChatSend
   if (replies.length === 0 || !text) {
     return undefined;
   }
+  const first = expectDefined(replies[0], "btw replies entry at 0");
   return {
-    question: expectDefined(replies[0], "btw replies entry at 0").btw.question.trim(),
+    ...(first.btw.kind === "catchup" ? { sideKind: "catchup" as const } : {}),
+    question: first.btw.question.trim(),
     text,
     isError: replies.some((payload) => payload.isError),
   };

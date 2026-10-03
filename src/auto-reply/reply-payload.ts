@@ -29,7 +29,8 @@ export function formatBtwTextForExternalDelivery(payload: ReplyPayload): string 
     return payload.text;
   }
   const question = normalizeOptionalString(payload.btw?.question);
-  if (!question) {
+  // Catch-up answers carry their own "Catch-up since your message" header.
+  if (!question || payload.btw?.kind === "catchup") {
     return payload.text;
   }
   const formatted = `BTW\nQuestion: ${question}\n\n${text}`;
