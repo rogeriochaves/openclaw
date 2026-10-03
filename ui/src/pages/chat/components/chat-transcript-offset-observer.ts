@@ -5,6 +5,7 @@ import type { TranscriptEndAnchor } from "./chat-transcript-end-anchor.ts";
 import { maxTranscriptScrollOffset } from "./chat-transcript-geometry.ts";
 import type { ChatTranscriptInteractionAnchor } from "./chat-transcript-interaction-anchor.ts";
 import type { TranscriptPrependAnchor } from "./chat-transcript-prepend-anchor.ts";
+import { TranscriptResizeAnchor } from "./chat-transcript-resize-anchor.ts";
 import {
   publishTranscriptScroll,
   subscribeTranscriptScroll,
@@ -30,11 +31,12 @@ type TranscriptOffsetState = {
   pendingInteractionAnchor: ChatTranscriptInteractionAnchor | null;
   syncNativeOffset: (() => void) | null;
   recordProgrammaticScroll: ((before: number, after: number, maintenance: boolean) => void) | null;
+  readonly resizeAnchor: TranscriptResizeAnchor;
 };
 
 /** Create the state shared by native input observation and transcript commands. */
 export function createTranscriptOffsetState(): TranscriptOffsetState {
-  return {
+  const state: TranscriptOffsetState = {
     pendingScrollOffset: null,
     scrollCommand: null,
     touching: false,
@@ -50,7 +52,23 @@ export function createTranscriptOffsetState(): TranscriptOffsetState {
     pendingInteractionAnchor: null,
     syncNativeOffset: null,
     recordProgrammaticScroll: null,
+    // Resize corrections write through the same maintenance path as TanStack.
+    resizeAnchor: new TranscriptResizeAnchor({
+      hasScrollCommand: () => state.scrollCommand !== null || state.pendingScrollOffset !== null,
+      interactionRow: () => state.pendingInteractionAnchor?.row ?? null,
+      touching: () => state.touching,
+      writeOffset: (offset, instance) => {
+        scrollTranscriptOffset(
+          state,
+          offset,
+          { adjustments: undefined, behavior: undefined },
+          instance,
+        );
+        instance.scrollOffset = instance.scrollElement?.scrollTop ?? offset;
+      },
+    }),
   };
+  return state;
 }
 
 export function isTranscriptMaintenanceScroll(
@@ -131,6 +149,8 @@ export function scrollTranscriptOffset(
   options: Parameters<typeof elementScroll>[1],
   instance: Virtualizer<HTMLDivElement, HTMLElement>,
 ): void {
+  // Targets are in row coordinates, which already include a shift held on screen.
+  state.resizeAnchor.clearHeld();
   const element = instance.scrollElement;
   const before = element?.scrollTop ?? 0;
   elementScroll(offset, options, instance);
@@ -160,6 +180,7 @@ export function observeTranscriptOffset(
   callback: (offset: number, scrolling: boolean) => void,
 ): () => void {
   const element = owner.getScrollElement();
+  owner.state.resizeAnchor.attach(instance);
   let nativeOffset = element?.scrollTop ?? 0;
   let maintenanceRevision = 0;
   let maintenanceFrame: number | null = null;
@@ -241,6 +262,7 @@ export function observeTranscriptOffset(
       }
       // Input can precede projection capture; carry its later native movement.
       owner.prependAnchor.moveWithReader(delta);
+      owner.state.resizeAnchor.noteReaderScroll(offset - delta);
     }
     publish({
       type: "offset",
@@ -249,7 +271,10 @@ export function observeTranscriptOffset(
       touching: owner.state.touching,
       programmatic,
     });
-    callback(offset, scrolling);
+    callback(owner.state.resizeAnchor.readerOffset(offset), scrolling);
+    if (!scrolling) {
+      owner.state.resizeAnchor.settle(instance);
+    }
     const atEnd = owner.onOffset();
     // Range/isScrolling and pane follow policy already invalidate themselves.
     // The rail observes offsets directly; only changed lifecycle gates need a pane commit.
@@ -264,7 +289,7 @@ export function observeTranscriptOffset(
       return;
     }
     const offset = element.scrollTop;
-    if (offset !== instance.scrollOffset) {
+    if (owner.state.resizeAnchor.readerOffset(offset) !== instance.scrollOffset) {
       publishOffset(offset, instance.isScrolling);
     }
   };
@@ -285,6 +310,7 @@ export function observeTranscriptOffset(
     // offset notification is guaranteed after releasing a stationary touch.
     if (!instance.isScrolling) {
       owner.state.touchScrolling = false;
+      owner.state.resizeAnchor.settle(instance);
     }
     publishInput(event);
     if (wasTouchActive !== owner.state.touchActive) {
@@ -434,6 +460,7 @@ export function observeTranscriptOffset(
     }
     cleanup?.();
     stopCorrections?.();
+    owner.state.resizeAnchor.clearHeld();
     contactIds.clear();
     owner.state.touching = false;
     owner.state.touchScrolling = false;
