@@ -389,6 +389,7 @@ export class ChatSessionVirtualizerHost implements ReactiveControllerHost, ChatT
         this.scrollElement,
         this.virtualizerController.getVirtualizer(),
         () => this.measureConnectedRows(),
+        (scrollTop) => this.resizeAnchor.readerOffset(scrollTop),
       )
     ) {
       this.offsetState.syncNativeOffset?.();

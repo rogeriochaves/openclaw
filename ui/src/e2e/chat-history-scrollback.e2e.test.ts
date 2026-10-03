@@ -267,9 +267,10 @@ suite.define(() => {
   it.each([
     { name: "desktop wheel", mobile: false },
     { name: "iPhone touch flings", mobile: true },
+    { name: "iPhone touch flings, iOS 26 and older", mobile: true, oldIos: true },
   ])(
     "keeps the message being read still while scrolling up through older pages ($name)",
-    async ({ mobile }) => {
+    async ({ mobile, oldIos }) => {
       const options = {
         locale: "en-US",
         serviceWorkers: "block" as const,
@@ -283,6 +284,17 @@ suite.define(() => {
           : { viewport: { width: 1280, height: 900 } }),
       };
       await suite.withPage(options, async ({ context, page }) => {
+        if (oldIos) {
+          // Safari before 27 has no overflow-anchor, which selects the path
+          // where scroll writes would stop a momentum fling.
+          await page.addInitScript(() => {
+            const supports = CSS.supports.bind(CSS);
+            CSS.supports = ((...args: [string, string?]) =>
+              args[0] === "overflow-anchor"
+                ? false
+                : supports(...(args as [string, string]))) as typeof CSS.supports;
+          });
+        }
         await page.route("**/__openclaw__/assistant-media?**", async (route) => {
           const url = new URL(route.request().url());
           if (url.searchParams.get("meta") === "1") {

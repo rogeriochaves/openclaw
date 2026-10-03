@@ -18,6 +18,8 @@ export type TranscriptResizeAnchorHost = {
   hasScrollCommand(): boolean;
   /** Row whose disclosure the reader just toggled; it anchors on its own top. */
   interactionRow(): Element | null;
+  /** A finger is on the transcript, so a momentum fling may follow. */
+  touching(): boolean;
   /** Write a measured correction through the transcript's maintenance path. */
   writeOffset(offset: number, instance: Virtualizer<HTMLDivElement, HTMLElement>): void;
 };
@@ -63,6 +65,10 @@ export class TranscriptResizeAnchor {
   // The toggled row keeps settling after its interaction anchor is released,
   // so it keeps the existing policy until the reader scrolls again.
   private toggledRow: Element | null = null;
+  // Old iOS: corrections made during a fling move the rows on screen instead
+  // of scrollTop, and fold into scrollTop once the fling rests.
+  private heldShift = 0;
+  private heldContent: HTMLElement | null = null;
 
   constructor(private readonly host: TranscriptResizeAnchorHost) {}
 
@@ -122,29 +128,88 @@ export class TranscriptResizeAnchor {
     if (firstMeasure ? item.start < offset : item.end <= offset) {
       amount = delta;
     } else if (!firstMeasure && item.start < offset) {
-      amount = this.shiftAboveReader(item, delta, element, instance);
+      amount = this.shiftAboveReader(item, delta, offset, element, instance);
     }
     this.recordRow(element);
     if (Math.abs(amount) < 0.5) {
       return false;
     }
-    const whole = Math.abs(amount - delta) < 0.5;
-    // Old iOS: TanStack defers whole-row corrections until the fling rests.
-    // A partial shift has no deferred path there and is left alone.
-    if (this.deferToTanStack || (whole && !this.ios)) {
-      return whole;
+    // Old iOS: a scrollTop write would stop the fling, and TanStack's own
+    // deferral applies everything in one jump when it rests. Hold it on screen.
+    if (this.deferToTanStack) {
+      if (instance.isScrolling || this.host.touching()) {
+        this.hold(amount, instance);
+      } else {
+        this.write(amount, instance);
+      }
+      return false;
     }
-    const scrollElement = instance.scrollElement;
-    if (scrollElement) {
-      this.host.writeOffset(scrollElement.scrollTop + amount, instance);
+    if (Math.abs(amount - delta) < 0.5 && !this.ios) {
+      return true;
     }
+    this.write(amount, instance);
     return false;
   };
 
-  /** Shift of the first content at or below the viewport top inside a spanning row. */
+  /** The reader's offset in row coordinates, including a shift held on screen. */
+  readerOffset(scrollTop: number): number {
+    return scrollTop + this.heldShift;
+  }
+
+  /**
+   * Fold a held shift into scrollTop once the fling has rested, in one write
+   * so the reader sees nothing move. Above the first row it cannot be
+   * written yet, so it stays on screen until older history or the reader
+   * makes room.
+   */
+  settle(instance: Virtualizer<HTMLDivElement, HTMLElement>): void {
+    const scrollElement = instance.scrollElement;
+    if (
+      this.heldShift !== 0 &&
+      scrollElement &&
+      !instance.isScrolling &&
+      !this.host.touching() &&
+      this.readerOffset(scrollElement.scrollTop) >= 0
+    ) {
+      this.write(0, instance);
+    }
+  }
+
+  /** Drop a held shift; the caller writes a target in row coordinates. */
+  clearHeld(): void {
+    this.heldShift = 0;
+    this.heldContent?.style.removeProperty("translate");
+    this.heldContent = null;
+  }
+
+  private hold(amount: number, instance: Virtualizer<HTMLDivElement, HTMLElement>): void {
+    const scrollElement = instance.scrollElement;
+    const content = scrollElement?.querySelector<HTMLElement>(":scope > .chat-thread-inner");
+    if (!scrollElement || !content) {
+      return;
+    }
+    if (this.heldContent !== content) {
+      this.clearHeld();
+      this.heldContent = content;
+    }
+    this.heldShift += amount;
+    content.style.translate = `0 ${-this.heldShift}px`;
+    // Later rows in this batch and the range see where the reader is.
+    instance.scrollOffset = this.readerOffset(scrollElement.scrollTop);
+  }
+
+  private write(amount: number, instance: Virtualizer<HTMLDivElement, HTMLElement>): void {
+    const scrollElement = instance.scrollElement;
+    if (scrollElement) {
+      this.host.writeOffset(this.readerOffset(scrollElement.scrollTop) + amount, instance);
+    }
+  }
+
+  /** Shift of the first content the reader saw at or below the viewport top in a spanning row. */
   private shiftAboveReader(
     item: VirtualItem,
     delta: number,
+    offset: number,
     element: HTMLElement | undefined,
     instance: Virtualizer<HTMLDivElement, HTMLElement>,
   ): number {
@@ -154,17 +219,18 @@ export class TranscriptResizeAnchor {
     if (!element || !previous || !scrollElement) {
       return 0;
     }
-    const readerTop =
-      scrollElement.getBoundingClientRect().top +
-      (this.paintedOffset ?? scrollElement.scrollTop) -
-      scrollElement.scrollTop;
+    // Row-relative line the reader saw at the viewport top. Rows may already
+    // be repositioned for this frame, so live viewport positions can show
+    // content the reader never saw.
+    const nativeScroll =
+      this.paintedOffset === null ? 0 : scrollElement.scrollTop - this.paintedOffset;
+    const readerLine = offset - nativeScroll - item.start;
     const rowTop = element.getBoundingClientRect().top;
     for (const { id, element: candidate } of readRowAnchors(element)) {
-      const top = candidate.getBoundingClientRect().top;
       const before = previous.get(id);
       // Content already cut by the top edge is scrolling away, not being read.
-      if (top >= readerTop && before !== undefined) {
-        return top - rowTop - before;
+      if (before !== undefined && before >= readerLine - 1) {
+        return candidate.getBoundingClientRect().top - rowTop - before;
       }
     }
     // Nothing in this row starts inside the viewport, so the reader is looking

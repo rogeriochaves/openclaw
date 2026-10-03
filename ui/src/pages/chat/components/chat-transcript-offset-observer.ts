@@ -26,6 +26,7 @@ type TranscriptOffsetState = {
   syncNativeOffset: (() => void) | null;
   recordProgrammaticScroll: ((before: number, after: number, maintenance: boolean) => void) | null;
   recordReaderScroll: ((from: number) => void) | null;
+  resizeAnchor: TranscriptResizeAnchor | null;
 };
 
 /** Create the state shared by native input observation and transcript commands. */
@@ -40,6 +41,7 @@ export function createTranscriptOffsetState(): TranscriptOffsetState {
     syncNativeOffset: null,
     recordProgrammaticScroll: null,
     recordReaderScroll: null,
+    resizeAnchor: null,
   };
 }
 
@@ -109,6 +111,8 @@ export function scrollTranscriptOffset(
   options: Parameters<typeof elementScroll>[1],
   instance: Virtualizer<HTMLDivElement, HTMLElement>,
 ): void {
+  // Targets are in row coordinates, which already include a shift held on screen.
+  state.resizeAnchor?.clearHeld();
   const element = instance.scrollElement;
   const before = element?.scrollTop ?? 0;
   elementScroll(offset, options, instance);
@@ -132,6 +136,7 @@ export function createTranscriptResizeAnchor(state: TranscriptOffsetState): Tran
   const anchor = new TranscriptResizeAnchor({
     hasScrollCommand: () => state.scrollCommand !== null || state.pendingScrollOffset !== null,
     interactionRow: () => state.pendingInteractionAnchor?.row ?? null,
+    touching: () => state.touching,
     writeOffset: (offset, instance) => {
       scrollTranscriptOffset(
         state,
@@ -143,6 +148,7 @@ export function createTranscriptResizeAnchor(state: TranscriptOffsetState): Tran
     },
   });
   state.recordReaderScroll = (from) => anchor.noteReaderScroll(from);
+  state.resizeAnchor = anchor;
   return anchor;
 }
 
@@ -225,8 +231,12 @@ export function observeTranscriptOffset(
       touching: owner.state.touching,
       programmatic,
     });
-    const changed = offset !== instance.scrollOffset;
-    callback(offset, scrolling);
+    const readerOffset = owner.state.resizeAnchor?.readerOffset(offset) ?? offset;
+    const changed = readerOffset !== instance.scrollOffset;
+    callback(readerOffset, scrolling);
+    if (!scrolling) {
+      owner.state.resizeAnchor?.settle(instance);
+    }
     // Range notifications are memoized: the viewport midpoint can cross
     // a rail landmark without changing the visible rows. Lit coalesces
     // this request with the virtualizer's own update when both fire.
@@ -239,7 +249,7 @@ export function observeTranscriptOffset(
       return;
     }
     const offset = element.scrollTop;
-    if (offset !== instance.scrollOffset) {
+    if ((owner.state.resizeAnchor?.readerOffset(offset) ?? offset) !== instance.scrollOffset) {
       publishOffset(offset, instance.isScrolling);
     }
   };
@@ -259,6 +269,7 @@ export function observeTranscriptOffset(
     // offset notification is guaranteed after releasing a stationary touch.
     if (!instance.isScrolling) {
       owner.state.touchScrolling = false;
+      owner.state.resizeAnchor?.settle(instance);
     }
     publishInput(event);
     owner.requestUpdate();
@@ -371,6 +382,7 @@ export function observeTranscriptOffset(
     }
     cleanup?.();
     stopCorrections?.();
+    owner.state.resizeAnchor?.clearHeld();
     contactIds.clear();
     owner.state.touching = false;
     owner.state.touchScrolling = false;
