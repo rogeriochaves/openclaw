@@ -32,6 +32,7 @@ type ComparableHistoryMessage = {
   text?: string;
   undecoratedText?: string;
   timestamp?: number;
+  suppressed?: boolean;
 };
 
 type TimestampSummary = {
@@ -570,15 +571,17 @@ export function mergeImportedChatHistoryMessages(params: {
   if (params.importedMessages.length === 0) {
     return params.localMessages;
   }
-  const merged = params.localMessages.map((message, order) =>
+  const prepared = params.localMessages.map((message, order) =>
     prepareComparableMessage(message, order, resolveImportedExternalIdentityKey(message)),
   );
   const projectedAggregates = projectCliAssistantAggregatesOntoFinalSegment({
-    localEntries: merged,
+    localEntries: prepared,
     importedMessages: params.importedMessages,
     prepare: (message) => prepareComparableMessage(message, 0, undefined),
     timestampWindowMs: DEDUPE_TIMESTAMP_WINDOW_MS,
   });
+  // A second local copy of the same run's reply stays out of the merged view.
+  const merged = prepared.filter((entry) => !entry.suppressed);
   const exactExternalIdentityIndex = new Map<string, ComparableHistoryMessage>();
   const allMessageRoleTextIndex: RoleTextIndex = new Map();
   const identitylessRoleTextIndex: RoleTextIndex = new Map();
@@ -640,7 +643,7 @@ export function mergeImportedChatHistoryMessages(params: {
   }
   let changed = projectedAggregates;
   let expanded = false;
-  let nextOrder = merged.length;
+  let nextOrder = prepared.length;
   for (const message of params.importedMessages) {
     const externalIdentityKey = resolveImportedExternalIdentityKey(message);
     const imported = prepareComparableMessage(message, nextOrder, externalIdentityKey);
