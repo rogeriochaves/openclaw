@@ -2117,6 +2117,31 @@ describe("runBtwSideQuestion", () => {
     await expect(runSideQuestion()).rejects.toThrow("No active session context.");
   });
 
+  it("uses caller-supplied context instead of the snapshot or transcript", async () => {
+    getActiveEmbeddedRunSnapshotMock.mockReturnValue({
+      messages: [{ role: "user", content: "snapshot row", timestamp: 1 }],
+    });
+    mockDoneAnswer(MATH_ANSWER);
+
+    await runMathSideQuestion({
+      contextMessages: [{ role: "user", content: "background row", timestamp: 2 }],
+    });
+
+    const messages = contextMessages(streamContext());
+    expect(messages).toHaveLength(2);
+    expectRecordFields(messages[0], { role: "user", content: "background row" });
+  });
+
+  it("allows an empty caller-supplied context for a self-contained question", async () => {
+    clearBuiltSessionMessages();
+    mockDoneAnswer(MATH_ANSWER);
+
+    const result = await runMathSideQuestion({ contextMessages: [] });
+
+    expect(result).toEqual({ text: MATH_ANSWER });
+    expect(contextMessages(streamContext())).toHaveLength(1);
+  });
+
   it("uses active-run snapshot messages for BTW context while the main run is in flight", async () => {
     clearBuiltSessionMessages();
     getActiveEmbeddedRunSnapshotMock.mockReturnValue({

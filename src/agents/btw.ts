@@ -528,6 +528,13 @@ type RunBtwSideQuestionParams = {
   model: string;
   question: string;
   images?: ImageContent[];
+  /**
+   * Background conversation supplied by the caller instead of the active run
+   * snapshot or transcript tail. An empty list means the question is self-contained.
+   */
+  contextMessages?: unknown[];
+  /** Side-answer metadata attached to streamed blocks; defaults to the question. */
+  replyBtw?: NonNullable<ReplyPayload["btw"]>;
   sessionEntry: StoredSessionEntry;
   sessionStore?: Record<string, StoredSessionEntry>;
   sessionKey?: string;
@@ -1001,7 +1008,13 @@ export async function runBtwSideQuestion(
       );
       const admittedRunContext = await preparedRunAdmission.admit("plugin-harness");
       try {
-        const { model: _sideModel, authorityRunId: _authorityRunId, ...hostAttempt } = params;
+        const {
+          model: _sideModel,
+          authorityRunId: _authorityRunId,
+          contextMessages: _contextMessages,
+          replyBtw: _replyBtw,
+          ...hostAttempt
+        } = params;
         const host = createAgentHarnessHostCapabilities({
           attempt: {
             ...hostAttempt,
@@ -1089,7 +1102,13 @@ export async function runBtwSideQuestion(
     const imageLimits = resolveImageSanitizationLimits(params.cfg);
     let messages: Message[] = [];
     let inFlightPrompt: string | undefined;
-    if (Array.isArray(activeRunSnapshot?.messages) && activeRunSnapshot.messages.length > 0) {
+    if (params.contextMessages) {
+      messages = await toSimpleContextMessages({ messages: params.contextMessages, imageLimits });
+      inFlightPrompt = activeRunSnapshot?.inFlightPrompt;
+    } else if (
+      Array.isArray(activeRunSnapshot?.messages) &&
+      activeRunSnapshot.messages.length > 0
+    ) {
       messages = await toSimpleContextMessages({
         messages: activeRunSnapshot.messages,
         imageLimits,
@@ -1098,7 +1117,7 @@ export async function runBtwSideQuestion(
     } else if (activeRunSnapshot) {
       inFlightPrompt = activeRunSnapshot.inFlightPrompt;
     }
-    if (messages.length === 0) {
+    if (messages.length === 0 && !params.contextMessages) {
       messages = await toSimpleContextMessages({
         messages: await readBtwTranscriptMessages({
           agentId: sessionAgentId,
@@ -1111,7 +1130,7 @@ export async function runBtwSideQuestion(
         imageLimits,
       });
     }
-    if (messages.length === 0 && !inFlightPrompt?.trim()) {
+    if (messages.length === 0 && !inFlightPrompt?.trim() && !params.contextMessages) {
       throw new Error("No active session context.");
     }
 
@@ -1309,7 +1328,7 @@ export async function runBtwSideQuestion(
       blockEmitChain = blockEmitChain.then(async () => {
         await params.opts?.onBlockReply?.({
           text,
-          btw: { question: params.question },
+          btw: params.replyBtw ?? { question: params.question },
         });
       });
       await blockEmitChain;
