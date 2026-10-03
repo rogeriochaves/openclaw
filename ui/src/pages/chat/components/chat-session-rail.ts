@@ -495,7 +495,19 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
         return;
       }
       element.dataset.railScrollKey = scrollKey;
-      element.scrollTop = element.scrollHeight;
+      // Measure after the new turn is laid out. A long answer (a catch-up on a
+      // phone) keeps its start in view instead of jumping to its last line.
+      requestAnimationFrame(() => {
+        const exchanges = element.querySelectorAll<HTMLElement>(".chat-session-rail__exchange");
+        const latest = exchanges[exchanges.length - 1];
+        const bottom = element.scrollHeight - element.clientHeight;
+        const latestTop = latest
+          ? latest.getBoundingClientRect().top -
+            element.getBoundingClientRect().top +
+            element.scrollTop
+          : bottom;
+        element.scrollTop = Math.max(0, Math.min(bottom, latestTop));
+      });
     };
     return html`
       <div
