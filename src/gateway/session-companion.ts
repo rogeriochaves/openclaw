@@ -7,6 +7,7 @@ import { onSessionIdentityMutation } from "../sessions/session-lifecycle-events.
 import {
   createSessionCompanionAskRuntime,
   type SessionCompanionAskDeps,
+  type SessionCompanionAskMode,
 } from "./session-companion-ask.js";
 import type { SessionCompanionThread } from "./session-companion-state.js";
 import { sessionObserverScopeKey } from "./session-observer-model.js";
@@ -18,7 +19,8 @@ export type SessionCompanionService = {
   ask: (params: {
     agentId: string;
     sessionKey: string;
-    question: string;
+    question?: string;
+    mode?: SessionCompanionAskMode;
     connId: string;
     assertSourceCurrent?: () => void;
     signal?: AbortSignal;
@@ -105,7 +107,12 @@ export function createSessionCompanion(deps: SessionCompanionDeps): SessionCompa
       }
       thread.lastUsedAt = now();
       return {
-        exchanges: thread.exchanges.map(({ question, answer, ts }) => ({ question, answer, ts })),
+        exchanges: thread.exchanges.map(({ question, answer, ts, catchup }) => ({
+          question,
+          answer,
+          ts,
+          ...(catchup ? { catchup } : {}),
+        })),
       };
     },
     reset(target) {

@@ -1,4 +1,6 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { readCatchupTranscriptRows } from "../agents/catchup-transcript.js";
+import type { CatchupTranscriptRow } from "../agents/catchup.js";
 import { extractStoredAssistantText } from "../agents/tools/chat-history-text.js";
 import { readSessionTranscriptBoundedMessageTailPage } from "../config/sessions/session-accessor.sqlite-active-events.js";
 import { redactToolPayloadText } from "../logging/redact.js";
@@ -233,6 +235,39 @@ async function readSessionCompanionContext(params: {
     return { kind: "unavailable" };
   }
 }
+
+export type SessionCompanionCatchupReadResult =
+  | { kind: "ready"; sessionId: string; rows: CatchupTranscriptRow[]; truncated: boolean }
+  | { kind: "missing" }
+  | { kind: "unavailable" };
+
+/** Reads /catchup rows fresh on every request; they are never cached with the thread. */
+export type SessionCompanionCatchupReader = (params: {
+  agentId: string;
+  sessionKey: string;
+}) => SessionCompanionCatchupReadResult;
+
+export const defaultSessionCompanionCatchupReader: SessionCompanionCatchupReader = ({
+  agentId,
+  sessionKey,
+}) => {
+  const loaded = loadGatewaySessionEntryReadOnly(sessionKey, { agentId });
+  const sessionId = loaded.entry?.sessionId?.trim();
+  if (!sessionId) {
+    return { kind: "missing" };
+  }
+  try {
+    const read = readCatchupTranscriptRows({
+      agentId,
+      sessionId,
+      sessionKey,
+      storePath: loaded.storePath,
+    });
+    return { kind: "ready", sessionId, rows: read.rows, truncated: read.truncated };
+  } catch {
+    return { kind: "unavailable" };
+  }
+};
 
 export const defaultSessionCompanionContextReader: SessionCompanionContextReader = {
   currentSessionId: ({ agentId, sessionKey }) =>

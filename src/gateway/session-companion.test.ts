@@ -1,9 +1,14 @@
+import { Value } from "typebox/value";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionsCompanionAskResultSchema } from "../../packages/gateway-protocol/src/schema/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { emitSessionIdentityMutation } from "../sessions/session-lifecycle-events.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { SessionCompanionAskError } from "./session-companion-ask.js";
-import type { SessionCompanionContextReader } from "./session-companion-context.js";
+import type {
+  SessionCompanionCatchupReader,
+  SessionCompanionContextReader,
+} from "./session-companion-context.js";
 import { trimSessionCompanionExchanges } from "./session-companion-state.js";
 import { createSessionCompanion } from "./session-companion.js";
 import type { SessionObserverCompanionSnapshot } from "./session-observer-contract.js";
@@ -13,9 +18,11 @@ function createHarness(overrides?: {
   now?: () => number;
   currentSessionId?: () => string | undefined;
   readContext?: () => ReturnType<SessionCompanionContextReader["read"]>;
+  catchupReader?: SessionCompanionCatchupReader;
   run?: (params: {
     messages: Array<{ role: "user" | "assistant"; content: string; ts: number }>;
     systemPrompt: string;
+    timeoutMs: number;
   }) => Promise<string>;
   snapshot?: () => SessionObserverCompanionSnapshot;
 }) {
@@ -49,6 +56,7 @@ function createHarness(overrides?: {
   );
   const deps = {
     contextReader: { currentSessionId, read: readContext },
+    ...(overrides?.catchupReader ? { catchupReader: overrides.catchupReader } : {}),
     getConfig: () => cfg,
     sessionObserver: { getCompanionSnapshot },
     resolveUtilityModelRef: () => "openai/gpt-5.6-luna",
@@ -760,6 +768,170 @@ describe("session companion asks", () => {
     expect(harness.service.state({ agentId: "main", sessionKey: "agent:main:main" })).toEqual({
       exchanges: [],
     });
+    harness.service.dispose();
+  });
+});
+
+describe("session companion catch-up", () => {
+  const rows = () => [
+    { message: { role: "user", content: "Fix the login bug", timestamp: 1_000 }, entryId: "e-0" },
+    {
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Full report: the login bug is fixed and tested." }],
+        timestamp: 2_000,
+      },
+      entryId: "e-1",
+    },
+    {
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Need your approval to deploy." }],
+        timestamp: 3_000,
+      },
+      entryId: "e-2",
+    },
+  ];
+  const catchupAnswer = JSON.stringify({
+    fullReport: "m1",
+    asked: { text: "Fix the login bug", refs: ["m0"] },
+    status: { state: "done", text: "Fixed and tested", refs: ["m1"] },
+    facts: [{ text: "Tests pass", refs: ["m1", "m9"] }],
+    waiting: [{ text: "Approve the deploy", refs: ["m2"] }],
+    blocked: [],
+    other: [],
+  });
+
+  it("reads fresh rows, runs the fixed prompt, and stores the structured answer", async () => {
+    vi.useFakeTimers();
+    const catchupReader = vi.fn<SessionCompanionCatchupReader>(() => ({
+      kind: "ready",
+      sessionId: "session-1",
+      rows: rows(),
+      truncated: false,
+    }));
+    const harness = createHarness({ catchupReader, run: async () => catchupAnswer });
+
+    const result = await harness.service.ask({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+      mode: "catchup",
+      connId: "conn-1",
+    });
+
+    const call = harness.run.mock.calls[0]?.[0];
+    expect(call?.timeoutMs).toBe(120_000);
+    expect(call?.systemPrompt).toContain("Reply with only the JSON object");
+    expect(call?.messages).toHaveLength(1);
+    expect(call?.messages[0]?.content).toContain("/catchup: I was away. Catch me up.");
+    expect(call?.messages[0]?.content).toContain("Need your approval to deploy.");
+    expect(result.catchup).toMatchObject({
+      ownerMessageFound: true,
+      sinceTs: 1_000,
+      fullReport: "m1",
+      status: { state: "done", text: "Fixed and tested", refs: ["m1"] },
+      facts: [{ text: "Tests pass", refs: ["m1"] }],
+      waiting: [{ text: "Approve the deploy", refs: ["m2"] }],
+    });
+    expect(result.catchup?.refs.map((ref) => [ref.ref, ref.entryId])).toEqual([
+      ["m0", "e-0"],
+      ["m1", "e-1"],
+      ["m2", "e-2"],
+    ]);
+    expect(Value.Check(SessionsCompanionAskResultSchema, result)).toBe(true);
+    expect(result.answer).toContain("Catch-up since your message at");
+    expect(result.answer).toContain("Waiting on you");
+
+    // A second catch-up reads rows again instead of reusing a cache.
+    await harness.service.ask({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+      mode: "catchup",
+      connId: "conn-1",
+    });
+    expect(catchupReader).toHaveBeenCalledTimes(2);
+    const exchanges = harness.service.state({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+    }).exchanges;
+    expect(exchanges).toHaveLength(2);
+    expect(exchanges[0]).toMatchObject({ question: "/catchup", answer: result.answer });
+    expect(exchanges[0]?.catchup).toEqual(result.catchup);
+    harness.service.dispose();
+  });
+
+  it("falls back to plain text without a structured payload when the JSON is invalid", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({
+      catchupReader: () => ({ kind: "ready", sessionId: "session-1", rows: [], truncated: false }),
+      run: async () => "Nothing much happened.",
+    });
+
+    const result = await harness.service.ask({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+      mode: "catchup",
+      connId: "conn-1",
+    });
+
+    expect(result.catchup).toBeUndefined();
+    expect(result.answer).toBe("Catch-up on recent messages\n\nNothing much happened.");
+    harness.service.dispose();
+  });
+
+  it("refreshes the cached transcript so later follow-ups see current history", async () => {
+    vi.useFakeTimers();
+    let reads = 0;
+    const harness = createHarness({
+      readContext: async () => {
+        reads += 1;
+        return {
+          kind: "ready",
+          context: {
+            empty: false,
+            messages: [{ role: "user", text: `history v${reads}`, ts: reads }],
+            sessionId: "session-1",
+          },
+        };
+      },
+      catchupReader: () => ({
+        kind: "ready",
+        sessionId: "session-1",
+        rows: rows(),
+        truncated: false,
+      }),
+      run: async () => catchupAnswer,
+    });
+    const ask = (params: { question?: string; mode?: "catchup" }) =>
+      harness.service.ask({
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        connId: "c",
+        ...params,
+      });
+
+    await ask({ question: "First?" });
+    await ask({ mode: "catchup" });
+    await ask({ question: "And now?" });
+
+    expect(harness.readContext).toHaveBeenCalledTimes(2);
+    const followUp = harness.run.mock.calls[2]?.[0];
+    expect(followUp?.timeoutMs).toBe(60_000);
+    expect(followUp?.messages[0]?.content).toContain("history v2");
+    expect(followUp?.messages.map((message) => message.content)).toContain("/catchup");
+    harness.service.dispose();
+  });
+
+  it("reports a missing session from the fresh read", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ catchupReader: () => ({ kind: "missing" }) });
+
+    const error = await harness.service
+      .ask({ agentId: "main", sessionKey: "agent:main:main", mode: "catchup", connId: "c" })
+      .catch((caught: unknown) => caught);
+
+    expect((error as SessionCompanionAskError).reason).toBe("session-missing");
+    expect(harness.run).not.toHaveBeenCalled();
     harness.service.dispose();
   });
 });

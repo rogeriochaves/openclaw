@@ -55,6 +55,36 @@ describe("session companion RPC", () => {
     });
   });
 
+  it("dispatches a catch-up ask without a question", async () => {
+    const ask = vi.fn(async () => ({ answer: "Catch-up on recent messages", ts: 125 }));
+    const respond = await invoke(
+      "sessions.companion.ask",
+      { sessionKey: "agent:main:main", mode: "catchup" },
+      { ask },
+    );
+
+    expect(ask).toHaveBeenCalledWith({
+      agentId: "main",
+      sessionKey: "agent:main:main",
+      mode: "catchup",
+      connId: "conn-1",
+      assertSourceCurrent: expect.any(Function),
+    });
+    expect(respond).toHaveBeenCalledWith(true, { answer: "Catch-up on recent messages", ts: 125 });
+  });
+
+  it("rejects an ordinary ask without a question", async () => {
+    const ask = vi.fn();
+    const respond = await invoke(
+      "sessions.companion.ask",
+      { sessionKey: "agent:main:main" },
+      { ask },
+    );
+
+    expect(ask).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(false, undefined, expect.anything());
+  });
+
   it("forwards the authenticated request lifetime and emits one final response", async () => {
     const controller = new AbortController();
     const ask = vi.fn(async () => ({ answer: "Bound to this connection.", ts: 124 }));

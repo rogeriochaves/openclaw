@@ -75,8 +75,8 @@ export const sessionCompanionHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const { sessionKey, agentId, question } = params as SessionsCompanionAskParams;
-    if (!question.trim()) {
+    const { sessionKey, agentId, question, mode } = params as SessionsCompanionAskParams;
+    if (mode !== "catchup" && !question?.trim()) {
       respond(
         false,
         undefined,
@@ -114,7 +114,7 @@ export const sessionCompanionHandlers: GatewayRequestHandlers = {
       const result = await context.sessionCompanion.ask({
         sessionKey: target.sessionKey,
         agentId: target.agentId,
-        question,
+        ...(mode === "catchup" ? { mode } : { question }),
         connId: client.connId,
         assertSourceCurrent,
         ...(signal ? { signal } : {}),

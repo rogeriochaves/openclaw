@@ -25,7 +25,11 @@ const SESSION_COMPANION_MAX_EXCHANGES = 24;
 const SESSION_COMPANION_MAX_EXCHANGE_BYTES = 48 * 1024;
 
 function exchangeBytes(exchange: SessionCompanionExchange): number {
-  return Buffer.byteLength(exchange.question, "utf8") + Buffer.byteLength(exchange.answer, "utf8");
+  return (
+    Buffer.byteLength(exchange.question, "utf8") +
+    Buffer.byteLength(exchange.answer, "utf8") +
+    (exchange.catchup ? Buffer.byteLength(JSON.stringify(exchange.catchup), "utf8") : 0)
+  );
 }
 
 export function trimSessionCompanionExchanges(exchanges: SessionCompanionExchange[]): void {
