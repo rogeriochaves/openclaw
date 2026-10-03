@@ -71,6 +71,8 @@ export type UserTurnInput = Pick<PersistedUserTurnMessage, "display" | "excludeF
   /** Bounded display fallback for replies whose target is outside loaded history. */
   replyToPreview?: { text: string; senderLabel?: string | null } | null;
   senderIsOwner?: boolean;
+  /** Channel ingress saw the linked account itself send this message (for example WhatsApp self-chat). */
+  senderIsSelf?: boolean;
   provenance?: InputProvenance;
   /** Identity is producer-owned attribution; labels remain editable display metadata. */
   sender?: {

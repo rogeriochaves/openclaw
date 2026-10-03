@@ -69,6 +69,7 @@ export function buildPersistedUserTurnMetadata(
           senderIsOwner:
             input.senderIsOwner && (!input.provenance || input.provenance.kind === "external_user"),
         }),
+    ...(input.senderIsSelf === true && !input.provenance ? { senderIsSelf: true } : {}),
     ...(senderId ? { senderId } : {}),
     ...(senderName ? { senderName } : {}),
     ...(senderUsername ? { senderUsername } : {}),
@@ -238,6 +239,7 @@ export function preparePersistedUserTurnMessageForTranscriptWrite(
   const intent =
     originalMeta?.intent === undefined ? undefined : structuredClone(originalMeta.intent);
   const senderIsOwner = originalMeta?.senderIsOwner;
+  const senderIsSelf = originalMeta?.senderIsSelf === true;
   const replyToId = normalizeOptionalString(originalMeta?.replyToId);
   const originalReplyPreview = asOptionalRecord(originalMeta?.replyToPreview);
   const replyPreviewText = normalizeOptionalString(originalReplyPreview?.text);
@@ -277,6 +279,7 @@ export function preparePersistedUserTurnMessageForTranscriptWrite(
   const protectedMeta: Record<string, unknown> = {
     ...nextUserMessage["__openclaw"],
     ...(typeof senderIsOwner === "boolean" ? { senderIsOwner } : {}),
+    ...(senderIsSelf ? { senderIsSelf } : {}),
     ...(replyToId ? { replyToId } : {}),
     ...(replyToPreview ? { replyToPreview } : {}),
     ...(transport ? { transport } : {}),

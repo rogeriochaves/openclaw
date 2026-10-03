@@ -317,6 +317,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       ? {
           text: userTurnTranscriptText,
           senderIsOwner: command.senderIsOwner,
+          ...(ctx.SenderIsSelf === true ? { senderIsSelf: true } : {}),
           ...(sourceTurnId ? { idempotencyKey: sourceTurnId } : {}),
           ...(inputProvenance && !isHeartbeat ? { provenance: inputProvenance } : {}),
           ...(isHeartbeat
