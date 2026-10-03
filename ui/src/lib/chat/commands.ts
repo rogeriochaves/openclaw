@@ -108,12 +108,17 @@ const COMMAND_ICON_OVERRIDES: Partial<Record<string, IconName>> = {
   subagents: "folder",
   steer: "send",
   tts: "volume2",
+  catchup: "listChecks",
+  main: "cornerDownLeft",
 };
 
 const INLINE_MULTI_WORD_COMMANDS = new Set(["dashboard"]);
 
 const LOCAL_COMMANDS = new Set([
   "btw",
+  // Opens a catch-up in the Side chat. /main stays a Gateway command; the
+  // composer rewrites it only when a Side chat thread is open.
+  "catchup",
   "help",
   "new",
   "reset",

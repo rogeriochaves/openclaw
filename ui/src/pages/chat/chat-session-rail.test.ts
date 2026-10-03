@@ -1,11 +1,15 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionObserverDigest } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
+import type {
+  SessionCompanionCatchup,
+  SessionObserverDigest,
+} from "../../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
 import {
   ChatSessionCompanionThreads,
+  formatSideChatContext,
   requestSessionCompanionAnswer,
   requestSessionCompanionState,
   resetSessionCompanion,
@@ -193,6 +197,46 @@ describe("ChatSessionCompanionThreads", () => {
       ["sessions.companion.state", { sessionKey: "one", agentId: "work" }],
       ["sessions.companion.reset", { sessionKey: "one", agentId: "work" }],
     ]);
+  });
+
+  it("sends a catch-up ask by mode and keeps its structured answer", async () => {
+    const request = vi.fn(async () => ({
+      answer: "Catch-up text",
+      ts: 5,
+      catchup: catchupFixture(),
+    }));
+    const client = { request: request as GatewayBrowserClient["request"] };
+    const threads = new ChatSessionCompanionThreads();
+    threads.setDraft("one", "typed follow-up");
+
+    await threads.submit(
+      "one",
+      "",
+      (key, question, mode) => requestSessionCompanionAnswer(client, key, question, "work", mode),
+      undefined,
+      "catchup",
+    );
+
+    expect(request.mock.calls).toEqual([
+      [
+        "sessions.companion.ask",
+        { sessionKey: "one", agentId: "work", mode: "catchup" },
+        { timeoutMs: 130_000 },
+      ],
+    ]);
+    const view = threads.view("one");
+    expect(view.draft).toBe("typed follow-up");
+    expect(view.turns).toEqual([
+      expect.objectContaining({
+        question: "/catchup",
+        mode: "catchup",
+        status: "answered",
+        catchup: catchupFixture(),
+      }),
+    ]);
+    expect(formatSideChatContext(view.turns)).toContain(
+      "Owner: /catchup\nSide assistant: Catch-up text",
+    );
   });
 
   it("hydrates and retains independent per-session threads", async () => {
@@ -435,6 +479,27 @@ describe("ChatSessionCompanionThreads", () => {
     },
   );
 });
+
+function catchupFixture(): SessionCompanionCatchup {
+  return {
+    ownerMessageFound: true,
+    sinceTs: 300_000,
+    fullReport: "m2",
+    asked: { text: "Fix the login bug", refs: ["m0"] },
+    status: { text: "Fixed and tested", refs: ["m2"], state: "done" },
+    facts: [{ text: "Tests pass on main", refs: ["m1", "m2"] }],
+    waiting: [{ text: "Approve the deploy", refs: ["m3"] }],
+    blocked: [],
+    other: [{ text: "A cron checked the backups", refs: ["m4"] }],
+    refs: [
+      { ref: "m0", entryId: "entry-0", ts: 300_000, label: "you", excerpt: "Fix the login bug" },
+      { ref: "m1", entryId: "entry-1", ts: 310_000, label: "agent", excerpt: "Running tests" },
+      { ref: "m2", entryId: "entry-2", ts: 320_000, label: "agent", excerpt: "Report: fixed" },
+      { ref: "m3", entryId: "entry-3", ts: 330_000, label: "agent", excerpt: "Approve?" },
+      { ref: "m4", ts: 340_000, label: "cron", excerpt: "Backups ok" },
+    ],
+  };
+}
 
 describe("ChatSessionRailElement", () => {
   beforeEach(() => {
@@ -733,12 +798,13 @@ describe("ChatSessionRailElement", () => {
 
     const starters = [...element.querySelectorAll(".chat-session-rail__starter")];
     expect(starters.map((starter) => starter.textContent?.trim())).toEqual([
+      "Catch me up",
       "What changed?",
       "Why did it stop?",
       "What's left?",
     ]);
 
-    (starters[1] as HTMLButtonElement).click();
+    (starters[2] as HTMLButtonElement).click();
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith("Why did it stop?");
   });
 
@@ -836,5 +902,111 @@ describe("ChatSessionRailElement", () => {
     expect(onCommandConsumed).toHaveBeenCalledTimes(2);
     expect(onVisibilityChange).toHaveBeenCalledTimes(2);
     expect(localStorage.getItem(displayPreferenceKey)).toBe("pill");
+  });
+
+  it("renders a catch-up natively and opens cited messages in the main chat", async () => {
+    const onOpenReference = vi.fn();
+    const element = await mount({
+      digest: null,
+      running: false,
+      onOpenReference,
+      companion: {
+        turns: [
+          {
+            question: "/catchup",
+            mode: "catchup",
+            status: "answered",
+            answer: "Catch-up since your message",
+            ts: 350_000,
+            catchup: catchupFixture(),
+          },
+        ],
+        loading: false,
+        draft: "",
+      },
+    });
+
+    const view = element.querySelector('[data-testid="side-chat-catchup"]');
+    expect(view?.querySelector(".chat-session-rail__catchup-heading")?.textContent).toMatch(
+      /^Catch-up since your message at \d/u,
+    );
+    expect(
+      [...(view?.querySelectorAll(".chat-session-rail__catchup-title") ?? [])].map((title) =>
+        title.textContent?.trim(),
+      ),
+    ).toEqual([
+      "What you asked",
+      "Where it stands",
+      "Key facts",
+      "Waiting on you",
+      "Also happened",
+    ]);
+    expect(view?.querySelector(".chat-session-rail__catchup-state")?.textContent).toBe("Done");
+    expect(element.querySelector(".chat-session-rail__question")?.textContent?.trim()).toBe(
+      "Catch me up",
+    );
+
+    view?.querySelector<HTMLButtonElement>(".chat-session-rail__catchup-report")?.click();
+    const factRefs = [
+      ...(view?.querySelectorAll<HTMLButtonElement>(
+        '[data-section="facts"] .chat-session-rail__catchup-ref',
+      ) ?? []),
+    ];
+    expect(factRefs.map((ref) => ref.textContent?.trim())).toEqual(["1", "2"]);
+    expect(factRefs[0]?.title).toContain("agent: Running tests");
+    factRefs[0]?.click();
+    expect(onOpenReference.mock.calls).toEqual([["entry-2"], ["entry-1"]]);
+    // A ref without a main-chat entry cannot navigate.
+    expect(
+      view?.querySelector<HTMLButtonElement>(
+        '[data-section="other"] .chat-session-rail__catchup-ref',
+      )?.disabled,
+    ).toBe(true);
+  });
+
+  it("falls back to the markdown answer without a structured catch-up", async () => {
+    const element = await mount({
+      companion: {
+        turns: [
+          {
+            question: "/catchup",
+            status: "answered",
+            answer: "Catch-up on recent messages\n\nNothing new.",
+            ts: 350_000,
+          },
+        ],
+        loading: false,
+        draft: "",
+      },
+    });
+
+    expect(element.querySelector('[data-testid="side-chat-catchup"]')).toBeNull();
+    expect(element.querySelector(".chat-session-rail__answer")?.textContent).toContain(
+      "Nothing new.",
+    );
+  });
+
+  it("routes composer actions to the side chat, a catch-up, or the main chat", async () => {
+    const onSubmit = vi.fn();
+    const onCatchup = vi.fn();
+    const onSendToMain = vi.fn();
+    const onDraftChange = vi.fn();
+    const companion = { turns: [], loading: false, draft: "Ship it" };
+    const element = await mount({ onSubmit, onCatchup, onSendToMain, onDraftChange, companion });
+
+    element.querySelector<HTMLButtonElement>(".chat-session-rail__to-main")?.click();
+    expect(onSendToMain).toHaveBeenCalledExactlyOnceWith("Ship it");
+
+    element.companion = { ...companion, draft: "/main Deploy now" };
+    await element.updateComplete;
+    element.querySelector("form")?.dispatchEvent(new SubmitEvent("submit", { bubbles: true }));
+    expect(onSendToMain).toHaveBeenLastCalledWith("Deploy now");
+
+    element.companion = { ...companion, draft: "/catchup" };
+    await element.updateComplete;
+    element.querySelector("form")?.dispatchEvent(new SubmitEvent("submit", { bubbles: true }));
+    expect(onCatchup).toHaveBeenCalledOnce();
+    expect(onDraftChange).toHaveBeenCalledWith("");
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

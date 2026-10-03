@@ -91,8 +91,13 @@ export type ChatHost = ChatInputHistoryState &
       senderLabel?: string | null;
       sourceMessageId?: string | null;
     } | null;
-    /** Control UI route for /btw and /side; server/TUI command handling remains unchanged. */
-    openSessionCompanion?: (question: string) => Promise<void> | void;
+    /** Control UI route for /btw, /side, and /catchup; server/TUI command handling remains unchanged. */
+    openSessionCompanion?: (
+      question: string,
+      options?: { mode?: "catchup" },
+    ) => Promise<void> | void;
+    /** Current side-chat thread as a text attachment for /main, or null when it has no answers. */
+    buildSideChatAttachment?: () => ChatAttachment | null;
     /** Handles a recognized catalog action only when this client can complete it. */
     dispatchClientPresentation?: (action: CommandClientPresentationAction) => Promise<boolean>;
   };

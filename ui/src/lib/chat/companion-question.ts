@@ -18,3 +18,16 @@ export function extractCompanionCommandQuestion(message: string): string {
     .replace(/^\/(?:btw|side)(?::\s*|\s+|$)/i, "")
     .trim();
 }
+
+const CATCHUP_COMMAND_RE = /^\/catchup(?::|\s|$)/i;
+const MAIN_COMMAND_RE = /^\/main(?::\s*|\s+|$)/i;
+
+export function isCatchupCommand(message: string): boolean {
+  return CATCHUP_COMMAND_RE.test(message.trim());
+}
+
+/** Text after `/main`, or null when the message is not a `/main` command. */
+export function extractMainCommandText(message: string): string | null {
+  const trimmed = message.trim();
+  return MAIN_COMMAND_RE.test(trimmed) ? trimmed.replace(MAIN_COMMAND_RE, "").trim() : null;
+}

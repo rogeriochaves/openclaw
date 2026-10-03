@@ -10,7 +10,11 @@ import { t } from "../../i18n/index.ts";
 import { registerChatGoalsEnglish } from "../../i18n/locales/en-chat-goals.ts";
 import type { ChatAttachment, HumanMention } from "../../lib/chat/chat-types.ts";
 import { canSubmitBeforeChatHistory, parseSlashCommand } from "../../lib/chat/commands.ts";
-import { extractCompanionCommandQuestion } from "../../lib/chat/companion-question.ts";
+import {
+  extractCompanionCommandQuestion,
+  extractMainCommandText,
+  isCatchupCommand,
+} from "../../lib/chat/companion-question.ts";
 import { resolveCurrentUserIdentity } from "../../lib/chat/current-user-identity.ts";
 import type { ControlUiFollowUpMode } from "../../lib/chat/follow-up-mode.ts";
 import { trimHumanMentions } from "../../lib/chat/human-mentions.ts";
@@ -232,8 +236,9 @@ export async function handleSendChat(
 
     host.chatRunError = null;
     const parsed = rawParsedCommand;
-    if (/^\/(?:btw|side)(?::|\s|$)/i.test(userMessage)) {
-      const question = extractCompanionCommandQuestion(userMessage);
+    const companionCatchup = isCatchupCommand(userMessage);
+    if (companionCatchup || /^\/(?:btw|side)(?::|\s|$)/i.test(userMessage)) {
+      const question = companionCatchup ? "" : extractCompanionCommandQuestion(userMessage);
       const submitKey = chatSubmitKey(host, "local", message, []);
       await withChatSubmitGuard(host, submitKey, async () => {
         if (messageOverride == null) {
@@ -244,9 +249,25 @@ export async function handleSendChat(
             resetChatInputHistoryNavigation(host);
           }
         }
-        await host.openSessionCompanion?.(question);
+        await (companionCatchup
+          ? host.openSessionCompanion?.(question, { mode: "catchup" })
+          : host.openSessionCompanion?.(question));
       });
       return undefined;
+    }
+    // /main with an open side thread becomes an ordinary message that carries
+    // the side exchanges as an attachment. Without one, the Gateway owns /main.
+    const mainText = extractMainCommandText(userMessage);
+    const sideChatAttachment = mainText ? (host.buildSideChatAttachment?.() ?? null) : null;
+    if (mainText && sideChatAttachment) {
+      if (messageOverride == null) {
+        clearSubmittedComposerState(host, previousDraft, attachmentsToSend, previousMentions);
+        recordNonTranscriptInputHistory(host, userMessage);
+      }
+      return handleSendChat(host, mainText, {
+        attachmentsOverride: [...attachmentsToSend, sideChatAttachment],
+        restoreDraft: messageOverride == null || opts?.restoreDraft === true,
+      });
     }
     const clientPresentation = parsed?.command.clientPresentation;
     const dispatchClientPresentation = host.dispatchClientPresentation;

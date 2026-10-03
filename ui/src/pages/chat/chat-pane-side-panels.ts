@@ -1,21 +1,26 @@
+import type { ChatAttachment } from "../../lib/chat/chat-types.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
 import { sendSessionObserverVisibility } from "./chat-observer.ts";
 import { ChatPaneBase } from "./chat-pane-base.ts";
 import {
   ChatSessionCompanionThreads,
+  type ChatSessionCompanionMode,
   type ChatSessionCompanionTurn,
+  formatSideChatContext,
   requestSessionCompanionAnswer,
   requestSessionCompanionState,
 } from "./chat-session-companion.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { resolveChatAgentId } from "./chat-state-route.ts";
 import { getChatComposerState } from "./components/chat-composer-state.ts";
+import { createSideChatAttachment } from "./components/chat-selection-attachment.ts";
 import type { SidebarLayout } from "./sidebar-layout-types.ts";
 import {
   closeSlot,
   isSidebarSlotVisible,
   openSlot,
   promoteSidebarPanel,
+  setSidebarExpanded,
   setSidebarOpen,
   sidebarMainPanel,
 } from "./sidebar-layout.ts";
@@ -138,12 +143,16 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
     return { ownsFocus, requestFocus };
   }
 
-  protected async openSessionCompanion(pageState: ChatPageHost, question: string): Promise<void> {
+  protected async openSessionCompanion(
+    pageState: ChatPageHost,
+    question: string,
+    mode?: ChatSessionCompanionMode,
+  ): Promise<void> {
     const { ownsFocus, requestFocus } = this.captureSessionCompanionFocus(pageState);
     // The first lazy mount and the completed answer share the same input intent.
     this.sessionCompanionFocusRequest = requestFocus;
     this.requestUpdate();
-    await this.submitSessionCompanionQuestion(question);
+    await this.submitSessionCompanionQuestion(question, mode);
     if (ownsFocus()) {
       this.sessionCompanionFocusRequest = requestFocus;
       this.requestUpdate();
@@ -152,6 +161,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
 
   protected readonly submitSessionCompanionQuestion = async (
     question: string | ChatSessionCompanionTurn,
+    mode?: ChatSessionCompanionMode,
   ) => {
     const state = this.state;
     if (!state || !state.sessionKey) {
@@ -160,17 +170,62 @@ export abstract class ChatPaneSidePanels extends ChatPaneBase {
     const { sessionKey, client, connected } = state;
     const agentId = resolveChatAgentId(state);
     this.requestSessionRail("open");
+    const catchup = (typeof question === "string" ? mode : question.mode) === "catchup";
     const text = typeof question === "string" ? question : question.question;
-    if (!text.trim()) {
+    if (!catchup && !text.trim()) {
       return;
     }
     if (!connected || !client) {
-      this.sessionCompanionThreads.setDraft(sessionKey, text, agentId);
+      if (!catchup) {
+        this.sessionCompanionThreads.setDraft(sessionKey, text, agentId);
+      }
       return;
     }
-    const ask = (key: string, value: string) =>
-      requestSessionCompanionAnswer(client, key, value, agentId);
-    await this.sessionCompanionThreads.submit(sessionKey, question, ask, agentId);
+    const ask = (key: string, value: string, askMode?: ChatSessionCompanionMode) =>
+      requestSessionCompanionAnswer(client, key, value, agentId, askMode);
+    await this.sessionCompanionThreads.submit(sessionKey, question, ask, agentId, mode);
+  };
+
+  /** Side exchanges of the selected session as a text attachment for the main agent. */
+  protected buildSideChatAttachment(pageState: ChatPageHost): ChatAttachment | null {
+    const sessionKey = pageState.sessionKey;
+    if (!sessionKey) {
+      return null;
+    }
+    const thread = this.sessionCompanionThreads.view(sessionKey, resolveChatAgentId(pageState));
+    const text = formatSideChatContext(thread.turns);
+    return text ? createSideChatAttachment(text, pageState.hello?.policy?.attachments) : null;
+  }
+
+  /**
+   * A focused side panel covers the conversation; restore the split so the main
+   * chat is in view. Narrow panes already stack the side chat under the chat.
+   */
+  protected revealMainChatBesideCompanion(): void {
+    const layout = this.state?.sidebarLayout;
+    if (layout?.expanded && layout.expandedSide) {
+      this.commitSidebarLayout(setSidebarExpanded(layout, false));
+    }
+  }
+
+  /** Sends a follow-up to the main chat with the side thread attached; the thread stays. */
+  protected readonly sendSessionCompanionToMain = async (text: string): Promise<void> => {
+    const state = this.state;
+    const message = text.trim();
+    if (!state?.sessionKey || !message) {
+      return;
+    }
+    const sessionKey = state.sessionKey;
+    const agentId = resolveChatAgentId(state);
+    const attachment = this.buildSideChatAttachment(state);
+    this.revealMainChatBesideCompanion();
+    const accepted = await state.handleSendChat(message, {
+      attachmentsOverride: attachment ? [attachment] : [],
+    });
+    const thread = this.sessionCompanionThreads.view(sessionKey, agentId);
+    if (accepted === true && thread.draft.trim() === message) {
+      this.sessionCompanionThreads.setDraft(sessionKey, "", agentId);
+    }
   };
 
   protected readonly prefillSessionCompanionQuestion = (question: string) => {

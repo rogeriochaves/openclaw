@@ -101,6 +101,7 @@ import {
   retireChatMetadataRequests,
 } from "./chat-state-refresh.ts";
 import { selectedChatSessionRow } from "./chat-state-route.ts";
+import { createSideChatAttachment } from "./components/chat-selection-attachment.ts";
 import {
   admitStoredChatComposerQueueItem,
   listStoredChatOutboxes,
@@ -3958,6 +3959,40 @@ describe("handleSendChat", () => {
     expect(host.chatMessage).toBe("");
     expect(navigateChatInputHistory(host, "up")).toBe(true);
     expect(host.chatMessage).toBe("/btw summarize this");
+  });
+
+  it("routes /catchup to a Side chat catch-up without sending it to chat", async () => {
+    const openSessionCompanion = vi.fn();
+    const host = makeChatHost({ chatMessage: "/catchup", openSessionCompanion });
+
+    await handleSendChat(host);
+
+    expect(openSessionCompanion).toHaveBeenCalledExactlyOnceWith("", { mode: "catchup" });
+    expect(host.chatMessages).toStrictEqual([]);
+    expect(host.chatMessage).toBe("");
+  });
+
+  it("sends /main as plain text with the open side thread attached", async () => {
+    const sideChat = createSideChatAttachment("Owner: why?\nSide assistant: because.");
+    const host = makeChatHost({
+      requestHandlers: { "chat.send": { status: "started" } },
+      chatMessage: "/main Please ship it",
+      buildSideChatAttachment: () => sideChat,
+    });
+
+    await handleSendChat(host);
+
+    const payload = findRequestPayload(host.request, "chat.send", "main payload");
+    expect(payload.message).toBe("Please ship it");
+    expect(payload.attachments).toStrictEqual([
+      {
+        type: "file",
+        mimeType: "text/plain",
+        fileName: "side-chat.txt",
+        content: btoa("Owner: why?\nSide assistant: because."),
+      },
+    ]);
+    expect(host.chatMessage).toBe("");
   });
 
   it("keeps queued normal messages recallable before transcript history catches up", async () => {

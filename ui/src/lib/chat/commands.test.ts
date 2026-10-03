@@ -484,6 +484,18 @@ describe("parseSlashCommand", () => {
     ]);
   });
 
+  it("runs /catchup locally and leaves /main to the Gateway", () => {
+    expectRecordFields(requireCommandByName("catchup"), "catchup command", {
+      key: "catchup",
+      executeLocal: true,
+    });
+    expectRecordFields(requireCommandByName("main"), "main command", {
+      key: "main",
+      executeLocal: false,
+    });
+    expectParsedSlash("/main bring it over", { key: "main" }, "bring it over");
+  });
+
   it("parses slash aliases through the shared registry", () => {
     const exportCommand = requireCommandByKey("export-session");
     expectRecordFields(exportCommand, "export-session command", {

@@ -321,7 +321,7 @@ function selectSlashCommand(
     cmd.executeLocal &&
     !cmd.args &&
     // Catalog continuations and viewer suggestions do not dispatch live chat commands.
-    (cmd.key !== "btw" || host.canRun(true, cmd))
+    (!["btw", "catchup"].includes(cmd.key) || host.canRun(true, cmd))
   ) {
     resetSlashMenuState(state);
     host.commitDraft(`/${cmd.name}`);

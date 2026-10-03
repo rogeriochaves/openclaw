@@ -355,6 +355,165 @@ openclaw-chat-session-rail {
   }
 }
 
+/* Catch-up: a condensed brief, not a chat reply. Sections are short labeled
+   lists; numbered ref chips link each line back to its main-chat message. */
+.chat-session-rail__catchup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chat-session-rail__catchup-heading {
+  font-size: var(--control-ui-text-sm);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.chat-session-rail__catchup-report {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--accent-subtle);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-session-rail__catchup-report:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.chat-session-rail__catchup-report svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.chat-session-rail__catchup-report-time {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: var(--control-ui-text-sm);
+}
+
+.chat-session-rail__catchup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chat-session-rail__catchup-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.chat-session-rail__catchup-section[data-section="waiting"] .chat-session-rail__catchup-title {
+  color: var(--warn);
+}
+
+.chat-session-rail__catchup-section[data-section="blocked"] .chat-session-rail__catchup-title {
+  color: var(--danger);
+}
+
+.chat-session-rail__catchup-section[data-section="other"] {
+  opacity: 0.85;
+}
+
+.chat-session-rail__catchup-line,
+.chat-session-rail__catchup-list {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.chat-session-rail__catchup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-inline-start: 16px;
+}
+
+.chat-session-rail__catchup-state {
+  display: inline-block;
+  margin-inline-end: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-session-rail__catchup-state[data-state="done"] {
+  background: var(--ok-subtle);
+  color: var(--ok);
+}
+
+.chat-session-rail__catchup-state[data-state="in_progress"] {
+  background: var(--warn-subtle);
+  color: var(--warn);
+}
+
+.chat-session-rail__catchup-state[data-state="stopped"] {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+.chat-session-rail__catchup-refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-inline-start: 5px;
+  vertical-align: 1px;
+}
+
+/* 24px keeps the chips tappable on phones while staying inline with text. */
+.chat-session-rail__catchup-ref {
+  min-width: 24px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-muted);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.chat-session-rail__catchup-ref:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chat-session-rail__catchup-ref:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.chat-session-rail__to-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.chat-session-rail__to-main svg {
+  width: 13px;
+  height: 13px;
+}
+
 .chat-session-rail__prompt {
   min-width: 0;
   flex: 1 1 auto;

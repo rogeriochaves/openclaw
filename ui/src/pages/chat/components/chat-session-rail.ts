@@ -13,6 +13,7 @@ import { renderPanelLoadingSkeleton } from "../../../components/panel-loading-sk
 import "../../../components/tooltip.ts";
 import "../../../components/web-awesome.ts";
 import { t } from "../../../i18n/index.ts";
+import { extractMainCommandText, isCatchupCommand } from "../../../lib/chat/companion-question.ts";
 import { formatDurationCompact } from "../../../lib/format-duration.ts";
 import { formatTimeAgo, formatTimeMs } from "../../../lib/format.ts";
 import { OpenClawLightDomElement } from "../../../lit/openclaw-element.ts";
@@ -21,11 +22,13 @@ import {
   loadChatObserverDisplayPreference,
   storeChatObserverDisplayPreference,
 } from "../chat-observer-display.ts";
-import type {
-  ChatSessionCompanionThread,
-  ChatSessionCompanionTurn,
+import {
+  COMPANION_CATCHUP_QUESTION,
+  type ChatSessionCompanionThread,
+  type ChatSessionCompanionTurn,
 } from "../chat-session-companion.ts";
 import { renderMessageMarkdown } from "./chat-message-text.ts";
+import { renderSessionRailCatchup } from "./chat-session-rail-catchup.ts";
 import { createSessionRailComposer } from "./chat-session-rail-composer.ts";
 
 export type SessionRailMode = "hidden" | "pill" | "expanded";
@@ -203,6 +206,10 @@ const COMPANION_HINT_KEYS = {
   Parameters<typeof t>[0]
 >;
 
+function isCatchupTurn(turn: ChatSessionCompanionTurn): boolean {
+  return turn.mode === "catchup" || turn.question === COMPANION_CATCHUP_QUESTION;
+}
+
 export class ChatSessionRailElement extends OpenClawLightDomElement {
   @property({ attribute: false }) sessionKey = "";
   @property({ attribute: false }) digest: SessionObserverDigest | null = null;
@@ -222,6 +229,9 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
   @property({ attribute: false }) consumedCommandGeneration = 0;
   @property({ attribute: false }) onCommandConsumed?: (generation: number) => void;
   @property({ attribute: false }) onSubmit?: (question: string | ChatSessionCompanionTurn) => void;
+  @property({ attribute: false }) onCatchup?: () => void;
+  @property({ attribute: false }) onSendToMain?: (text: string) => void;
+  @property({ attribute: false }) onOpenReference?: (entryId: string) => void;
   @property({ attribute: false }) onDraftChange?: (draft: string) => void;
   @property({ attribute: false }) onModeChange?: (mode: SessionRailMode) => void;
   @property({ attribute: false }) onVisibilityChange?: (visible: boolean) => void;
@@ -356,12 +366,28 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
 
   private submit() {
     const question = this.companion.draft.trim();
-    if (
-      question &&
-      this.connected &&
-      !this.companion.turns.some((turn) => turn.status === "pending")
-    ) {
-      this.onSubmit?.(question);
+    if (!question || !this.connected) {
+      return;
+    }
+    const mainText = extractMainCommandText(question);
+    if (mainText !== null) {
+      this.sendToMain(mainText);
+      return;
+    }
+    if (this.companion.turns.some((turn) => turn.status === "pending")) {
+      return;
+    }
+    if (isCatchupCommand(question)) {
+      this.onDraftChange?.("");
+      this.onCatchup?.();
+      return;
+    }
+    this.onSubmit?.(question);
+  }
+
+  private sendToMain(text = this.companion.draft.trim()) {
+    if (text && this.connected) {
+      this.onSendToMain?.(text);
     }
   }
 
@@ -436,6 +462,14 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
   private renderStarters() {
     return html`
       <div class="chat-session-rail__starters">
+        <button
+          class="chip chat-session-rail__starter chat-session-rail__starter--catchup"
+          type="button"
+          ?disabled=${!this.connected}
+          @click=${() => this.onCatchup?.()}
+        >
+          ${icons.listChecks}<span>${t("chat.rail.starters.catchup")}</span>
+        </button>
         ${SESSION_RAIL_STARTER_KEYS.map((key) => {
           const question = t(`chat.rail.starters.${key}` as Parameters<typeof t>[0]);
           return html`
@@ -492,12 +526,16 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
             >
               <div class="chat-group user chat-session-rail__message">
                 <div class="chat-bubble chat-session-rail__question">
-                  ${renderMessageMarkdown(
-                    turn.question,
-                    turn.question,
-                    { role: "user", isStreaming: false },
-                    { codeBlockChrome: "none", codeBlockInteraction: "static" },
-                  )}
+                  ${
+                    isCatchupTurn(turn)
+                      ? html`<p>${t("chat.rail.starters.catchup")}</p>`
+                      : renderMessageMarkdown(
+                          turn.question,
+                          turn.question,
+                          { role: "user", isStreaming: false },
+                          { codeBlockChrome: "none", codeBlockInteraction: "static" },
+                        )
+                  }
                 </div>
               </div>
               ${
@@ -505,12 +543,16 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
                   ? html`
                       <div class="chat-group assistant chat-session-rail__message">
                         <div class="chat-bubble chat-session-rail__answer">
-                          ${renderMessageMarkdown(
-                            turn.answer,
-                            String(turn.ts),
-                            { role: "assistant", isStreaming: false },
-                            { codeBlockInteraction: "interactive" },
-                          )}
+                          ${
+                            turn.catchup
+                              ? renderSessionRailCatchup(turn.catchup, this.onOpenReference)
+                              : renderMessageMarkdown(
+                                  turn.answer,
+                                  String(turn.ts),
+                                  { role: "assistant", isStreaming: false },
+                                  { codeBlockInteraction: "interactive" },
+                                )
+                          }
                         </div>
                       </div>
                       <time
@@ -524,7 +566,13 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
                     `
                   : html`
                       <div class="chat-session-rail__hint">
-                        ${t(turn.status === "pending" ? "chat.rail.askPending" : COMPANION_HINT_KEYS[turn.hint])}
+                        ${t(
+                          turn.status === "pending"
+                            ? isCatchupTurn(turn)
+                              ? "chat.rail.catchup.pending"
+                              : "chat.rail.askPending"
+                            : COMPANION_HINT_KEYS[turn.hint],
+                        )}
                       </div>
                       ${
                         turn.status === "failed" &&
@@ -717,9 +765,19 @@ export class ChatSessionRailElement extends OpenClawLightDomElement {
             <div class="agent-chat__composer-trail">
               <div class="agent-chat__composer-actions">
                 <button
+                  class="btn btn--ghost btn--sm chat-session-rail__to-main"
+                  type="button"
+                  title=${t("chat.rail.sendToMainHint")}
+                  ?disabled=${!this.connected || !this.companion.draft.trim() || !this.onSendToMain}
+                  @click=${() => this.sendToMain()}
+                >
+                  ${icons.cornerDownLeft}<span>${t("chat.rail.sendToMain")}</span>
+                </button>
+                <button
                   class="chat-send-btn"
                   type="submit"
                   aria-label=${t("chat.rail.askSubmit")}
+                  title=${t("chat.rail.askSubmit")}
                   ?disabled=${!this.connected || pending || !this.companion.draft.trim()}
                 >
                   ${icons.arrowUp}

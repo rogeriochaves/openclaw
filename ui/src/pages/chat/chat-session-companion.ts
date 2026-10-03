@@ -11,9 +11,24 @@ import type { GatewayBrowserClient } from "../../api/gateway.ts";
 const COMPANION_BUSY_DETAIL_CODE = "SESSION_COMPANION_BUSY";
 const MAX_COMPANION_EXCHANGES = 24;
 const COMPANION_ASK_TIMEOUT_MS = 70_000;
+// The Gateway gives a catch-up 120 s; the request outlives it so the Gateway's
+// own timeout error reaches the thread.
+const COMPANION_CATCHUP_TIMEOUT_MS = 130_000;
+
+export type ChatSessionCompanionMode = "catchup";
+
+/** Question label the Gateway stores for catch-up exchanges. */
+export const COMPANION_CATCHUP_QUESTION = "/catchup";
+
+export type ChatSessionCompanionAsk = (
+  sessionKey: string,
+  question: string,
+  mode?: ChatSessionCompanionMode,
+) => Promise<SessionsCompanionAskResult>;
 
 export type ChatSessionCompanionTurn = {
   question: string;
+  mode?: ChatSessionCompanionMode;
 } & (
   | { status: "pending" }
   | ({ status: "answered" } & SessionCompanionExchange)
@@ -177,11 +192,18 @@ export class ChatSessionCompanionThreads {
   async submit(
     sessionKey: string,
     question: string | ChatSessionCompanionTurn,
-    ask: (sessionKey: string, question: string) => Promise<SessionsCompanionAskResult>,
+    ask: ChatSessionCompanionAsk,
     agentId?: string | null,
+    mode?: ChatSessionCompanionMode,
   ): Promise<void> {
     const targetSessionKey = sessionKey.trim();
-    const normalized = typeof question === "string" ? question.trim() : question.question;
+    const turnMode = typeof question === "string" ? mode : question.mode;
+    const normalized =
+      typeof question !== "string"
+        ? question.question
+        : turnMode === "catchup"
+          ? COMPANION_CATCHUP_QUESTION
+          : question.trim();
     if (!targetSessionKey || !normalized) {
       return;
     }
@@ -191,7 +213,9 @@ export class ChatSessionCompanionThreads {
       return;
     }
     const turn: ChatSessionCompanionTurn =
-      typeof question === "string" ? { question: normalized, status: "pending" } : question;
+      typeof question === "string"
+        ? { question: normalized, ...(turnMode ? { mode: turnMode } : {}), status: "pending" }
+        : question;
     if (
       typeof question !== "string" &&
       (!thread.turns.includes(turn) || turn.status !== "failed")
@@ -202,17 +226,27 @@ export class ChatSessionCompanionThreads {
     if (typeof question === "string") {
       thread.turns = [...thread.turns, turn].slice(-MAX_COMPANION_EXCHANGES);
     }
-    thread.draft = "";
+    // A catch-up leaves a typed follow-up in place.
+    if (turnMode !== "catchup") {
+      thread.draft = "";
+    }
     thread.revision += 1;
     const token = createDeferredCore();
     this.submissionTokens.set(key, token);
     this.notify();
     try {
-      const result = await ask(targetSessionKey, normalized);
+      const result = await (turnMode
+        ? ask(targetSessionKey, normalized, turnMode)
+        : ask(targetSessionKey, normalized));
       if (this.submissionTokens.get(key) !== token) {
         return;
       }
-      Object.assign(turn, { status: "answered", answer: result.answer, ts: result.ts });
+      Object.assign(turn, {
+        status: "answered",
+        answer: result.answer,
+        ts: result.ts,
+        ...(result.catchup ? { catchup: result.catchup } : {}),
+      });
       thread.responses.set(turn, exchangeKey({ question: normalized, ...result }));
       thread.responses = new Map([...thread.responses].slice(-MAX_COMPANION_EXCHANGES));
     } catch (error) {
@@ -285,12 +319,39 @@ export function requestSessionCompanionAnswer(
   sessionKey: string,
   question: string,
   agentId?: string | null,
+  mode?: ChatSessionCompanionMode,
 ): Promise<SessionsCompanionAskResult> {
   return client.request<SessionsCompanionAskResult>(
     "sessions.companion.ask",
-    { sessionKey, ...(agentId ? { agentId } : {}), question },
-    { timeoutMs: COMPANION_ASK_TIMEOUT_MS },
+    {
+      sessionKey,
+      ...(agentId ? { agentId } : {}),
+      ...(mode === "catchup" ? { mode } : { question }),
+    },
+    { timeoutMs: mode === "catchup" ? COMPANION_CATCHUP_TIMEOUT_MS : COMPANION_ASK_TIMEOUT_MS },
   );
+}
+
+/** Text the main agent sees when a follow-up is brought from the side chat. */
+export function formatSideChatContext(turns: readonly ChatSessionCompanionTurn[]): string | null {
+  const exchanges = turns.filter(
+    (turn): turn is Extract<ChatSessionCompanionTurn, { status: "answered" }> =>
+      turn.status === "answered",
+  );
+  if (exchanges.length === 0) {
+    return null;
+  }
+  return [
+    "Earlier side chat between the owner and a side assistant, outside this conversation, oldest first. The owner brought it here as context for the message above.",
+    "",
+    ...exchanges.flatMap((turn) => [
+      `Owner: ${turn.question}`,
+      `Side assistant: ${turn.answer}`,
+      "",
+    ]),
+  ]
+    .join("\n")
+    .trimEnd();
 }
 
 export function requestSessionCompanionState(

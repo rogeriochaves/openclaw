@@ -38,3 +38,24 @@ export function createChatSelectionAttachment(
     file,
   });
 }
+
+/** The side-chat thread brought to the main chat, as a text file the agent reads. */
+export function createSideChatAttachment(
+  text: string,
+  limits?: ChatAttachmentControlsProps["attachmentLimits"],
+): ChatAttachment | null {
+  const file = new File([text], "side-chat.txt", { type: "text/plain" });
+  if (admitAttachmentFiles([file], limits).length === 0) {
+    return null;
+  }
+  return registerChatAttachmentPayload({
+    attachment: {
+      id: generateAttachmentId(),
+      mimeType: file.type,
+      fileName: file.name,
+      sizeBytes: file.size,
+    },
+    dataUrl: encodeTextAsDataUrl(text),
+    file,
+  });
+}

@@ -311,7 +311,9 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
       pageState.requestUpdate?.();
     };
     pageState.refreshSessionPullRequests = (options) => this.refreshSessionPullRequests(options);
-    pageState.openSessionCompanion = (question) => this.openSessionCompanion(pageState, question);
+    pageState.openSessionCompanion = (question, options) =>
+      this.openSessionCompanion(pageState, question, options?.mode);
+    pageState.buildSideChatAttachment = () => this.buildSideChatAttachment(pageState);
     pageState.retireSessionCompanion = (key, agentId) =>
       this.sessionCompanionThreads.retire(key, agentId);
     this.state = pageState;

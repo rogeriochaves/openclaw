@@ -75,6 +75,9 @@ type SidebarPanelDefinitionParams = {
   companionPresented: boolean;
   companionFocusRequest: (() => boolean) | undefined;
   onCompanionSubmit: (question: string | ChatSessionCompanionTurn) => void;
+  onCompanionCatchup: () => void;
+  onCompanionSendToMain: (text: string) => void;
+  onCompanionOpenReference: (entryId: string) => void;
   onCompanionDraftChange: (draft: string) => void;
   onCompanionVisibilityChange: (visible: boolean) => void;
   connected: boolean;
@@ -207,6 +210,9 @@ export function sidebarPanelDefinitions(
         .connected=${state?.connected === true}
         .sendShortcut=${resolveChatSendShortcut(state?.settings.chatSendShortcut)}
         .onSubmit=${params.onCompanionSubmit}
+        .onCatchup=${params.onCompanionCatchup}
+        .onSendToMain=${params.onCompanionSendToMain}
+        .onOpenReference=${params.onCompanionOpenReference}
         .onDraftChange=${params.onCompanionDraftChange}
         .onVisibilityChange=${params.onCompanionVisibilityChange}
       ></openclaw-chat-session-rail>`
