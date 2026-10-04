@@ -130,6 +130,18 @@ export function buildSessionCompanionSystemPrompt(sessionKey: string): string {
   ].join(" ");
 }
 
+/** Side chat inside an unsaved fork of the observed session's own CLI conversation. */
+export function buildSessionCompanionForkSystemPrompt(sessionKey: string): string {
+  return [
+    `You are answering a read-only Side chat question about session ${sessionKey}.`,
+    "The conversation you see is that session, forked so the operator can ask about it; nothing you write reaches it.",
+    "Answer only the operator's current question about the session without taking over, continuing, or changing its task.",
+    "Do not use tools or attempt any mutation, write, edit, command execution, message send, or session action.",
+    "Answer from evidence in the conversation; say plainly when you cannot know.",
+    "Return a concise plain-text answer in American English with no markdown or JSON wrapper.",
+  ].join(" ");
+}
+
 /** Validate the runner’s prepared model without a second route resolution or provider probe. */
 export function assertSessionCompanionImageInput(model: Pick<Model, "input">): void {
   if (!model.input?.includes("image")) {

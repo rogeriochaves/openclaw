@@ -14,6 +14,7 @@ import type { ReasoningLevel, ThinkLevel } from "../auto-reply/thinking.js";
 import type { ChatType } from "../channels/chat-type.js";
 import type { SessionEntry as StoredSessionEntry } from "../config/sessions.js";
 import { resolveCollapsedSessionAuthPinSource } from "../config/sessions/auth-profile-override-provenance.js";
+import { getCliSessionBinding } from "../config/sessions/cli-session-binding.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { streamWithPayloadPatch } from "../llm/providers/stream-wrappers/stream-payload-utils.js";
@@ -34,7 +35,12 @@ import { resolveExternalCliAuthOverlayScopeFromSelection } from "./auth-profiles
 import { resolveSessionAuthSelection } from "./auth-profiles/session-override.js";
 import type { AuthProfileStore } from "./auth-profiles/types.js";
 import { reconcileAuthProfileQuotaBlocks } from "./auth-profiles/usage.js";
-import { buildBtwCliPrompt, buildBtwQuestionPrompt, buildBtwSystemPrompt } from "./btw-prompts.js";
+import {
+  buildBtwCliPrompt,
+  buildBtwForkedSessionPrompt,
+  buildBtwQuestionPrompt,
+  buildBtwSystemPrompt,
+} from "./btw-prompts.js";
 import { readBtwTranscriptMessages, resolveBtwSessionTranscriptPath } from "./btw-transcript.js";
 import { executePreparedCliRun } from "./cli-runner/execute.runtime.js";
 import { prepareCliRunContext } from "./cli-runner/prepare.runtime.js";
@@ -525,7 +531,7 @@ type RunBtwSideQuestionParams = {
   authorityRunId?: string;
 };
 
-async function runCliBtwSideQuestion(params: {
+type CliBtwSideQuestionParams = {
   cfg: OpenClawConfig;
   model: string;
   question: string;
@@ -546,7 +552,35 @@ async function runCliBtwSideQuestion(params: {
   messageProvider?: string;
   currentChannelId?: string;
   authorityRunId: string;
-}): Promise<ReplyPayload> {
+};
+
+/** A fork of the session's native CLI session failed before it answered. */
+class CliBtwForkError extends Error {
+  constructor(cause: unknown) {
+    super("/btw could not fork the session's native CLI session", { cause });
+    this.name = "CliBtwForkError";
+  }
+}
+
+async function runCliBtwSideQuestion(params: CliBtwSideQuestionParams): Promise<ReplyPayload> {
+  try {
+    return await runCliBtwSideQuestionOnce(params, { allowSessionFork: true });
+  } catch (error) {
+    if (!(error instanceof CliBtwForkError) || params.opts?.abortSignal?.aborted) {
+      throw error;
+    }
+    // A stale or unreadable native session must not cost the user an answer.
+    return await runCliBtwSideQuestionOnce(
+      { ...params, authorityRunId: `btw-${randomUUID()}` },
+      { allowSessionFork: false },
+    );
+  }
+}
+
+async function runCliBtwSideQuestionOnce(
+  params: CliBtwSideQuestionParams,
+  options: { allowSessionFork: boolean },
+): Promise<ReplyPayload> {
   const timeoutMs = resolveAgentTimeoutMs({
     cfg: params.cfg,
     overrideSeconds: params.opts?.timeoutOverrideSeconds,
@@ -559,6 +593,11 @@ async function runCliBtwSideQuestion(params: {
     params.sessionAgentId,
     "btw.side-question",
   );
+  // The session's own native conversation, read live through an unsaved fork,
+  // includes the tool calls of a turn still running.
+  const sessionCliBinding = options.allowSessionFork
+    ? getCliSessionBinding(params.sessionEntry, params.cliProvider)
+    : undefined;
   let prepared: Awaited<ReturnType<typeof prepareCliRunContext>> | undefined;
   try {
     prepared = await prepareCliRunContext({
@@ -578,6 +617,17 @@ async function runCliBtwSideQuestion(params: {
         inFlightPrompt: params.inFlightPrompt,
       }),
       extraSystemPrompt: buildBtwSystemPrompt(),
+      ...(sessionCliBinding
+        ? {
+            sideQuestionSessionFork: {
+              binding: sessionCliBinding,
+              prompt: buildBtwForkedSessionPrompt({
+                question: params.question,
+                imageCount: params.imageCount,
+              }),
+            },
+          }
+        : {}),
       executionMode: "side-question",
       provider: params.cliProvider,
       model: params.model,
@@ -592,7 +642,14 @@ async function runCliBtwSideQuestion(params: {
       messageProvider: params.messageProvider,
       currentChannelId: params.currentChannelId,
     });
-    const output = await executePreparedCliRun(prepared);
+    let output: Awaited<ReturnType<typeof executePreparedCliRun>>;
+    try {
+      output = await executePreparedCliRun(prepared);
+    } catch (error) {
+      throw prepared.sideQuestionForkCliSessionId && !params.opts?.abortSignal?.aborted
+        ? new CliBtwForkError(error)
+        : error;
+    }
     const text = output.text.trim();
     if (!text) {
       throw new Error(`/btw side question via ${params.cliProvider} produced no answer.`);

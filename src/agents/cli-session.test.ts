@@ -21,6 +21,7 @@ import {
   isCliSessionInvalidatingFailoverReason,
   resolveCliSessionClearReason,
   resolveCliSessionReuse,
+  resolveSideQuestionForkCliSessionId,
   setCliSessionBinding,
   shouldClearFailedCliSessionBinding,
 } from "./cli-session.js";
@@ -737,4 +738,36 @@ describe("cli-session helpers", () => {
       );
     },
   );
+});
+
+describe("resolveSideQuestionForkCliSessionId", () => {
+  const forkable = {
+    binding: { sessionId: "native-1", authProfileId: "claude:work", cwdHash: "cwd-a" },
+    sideQuestionSessionFork: "unsaved" as const,
+    forkArg: "--fork-session",
+    resumeArgs: ["--resume", "{sessionId}"],
+    authProfileId: "claude:work",
+    cwdHash: "cwd-a",
+  };
+
+  it("forks only a declared backend's session from the same account and cwd", () => {
+    expect(resolveSideQuestionForkCliSessionId(forkable)).toBe("native-1");
+    expect(
+      resolveSideQuestionForkCliSessionId({ ...forkable, sideQuestionSessionFork: undefined }),
+    ).toBeUndefined();
+    expect(
+      resolveSideQuestionForkCliSessionId({ ...forkable, forkArg: undefined }),
+    ).toBeUndefined();
+    // Another account or cwd stores the native session where the CLI cannot find it.
+    expect(
+      resolveSideQuestionForkCliSessionId({ ...forkable, authProfileId: "claude:home" }),
+    ).toBeUndefined();
+    expect(resolveSideQuestionForkCliSessionId({ ...forkable, cwdHash: "cwd-b" })).toBeUndefined();
+    expect(
+      resolveSideQuestionForkCliSessionId({
+        ...forkable,
+        binding: { sessionId: "native-1", authProfileId: "claude:work" },
+      }),
+    ).toBeUndefined();
+  });
 });

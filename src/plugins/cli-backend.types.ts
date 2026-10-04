@@ -286,6 +286,8 @@ export type CliBackendResolveExecutionArgsContext = {
   /** Canonical tools routed through OpenClaw; disable equivalent native tools. */
   hostOwnedTools?: readonly string[];
   useResume: boolean;
+  /** True when this resume branches the native session with the backend `forkArg`. */
+  forkResume?: boolean;
   baseArgs: readonly string[];
 };
 
@@ -576,6 +578,15 @@ type CliBackendPluginBase = {
    * backend-owned tools.
    */
   sideQuestionToolMode?: CliBackendSideQuestionToolMode;
+  /**
+   * Side-question access to the live native session.
+   *
+   * Set to `unsaved` only when a `side-question` execution with `useResume`
+   * keeps the resume arguments, `forkArg` branches the native session, and the
+   * side-question argv disables session persistence, so the source session
+   * gets no writes while the side question reads its conversation so far.
+   */
+  sideQuestionSessionFork?: "unsaved";
 };
 
 type CliBackendNativeCompactionContract =

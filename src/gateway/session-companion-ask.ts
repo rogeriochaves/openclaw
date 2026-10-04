@@ -7,7 +7,7 @@ import {
   type PreparedAgentRunAdmission,
 } from "../agents/admitted-run-context.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
-import { buildBtwCliPrompt } from "../agents/btw-prompts.js";
+import { buildBtwCliPrompt, buildBtwForkedSessionPrompt } from "../agents/btw-prompts.js";
 import type { PreparedCliRunContext } from "../agents/cli-runner/types.js";
 import type { InternalSessionEffectsTarget } from "../agents/internal-session-effects.js";
 import { withSessionManagerWrite } from "../agents/sessions/session-manager-write-admission.js";
@@ -16,6 +16,7 @@ import { resolveUtilityModelRefForAgent } from "../agents/utility-model.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { loadExactSessionEntry } from "../config/sessions/session-accessor.js";
 import { withSessionTranscriptWriteAssertion } from "../config/sessions/transcript-write-context.js";
+import type { CliSessionBinding } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { Message, ImageContent } from "../llm/types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -25,6 +26,7 @@ import { parseMessageWithAttachments, type ChatAttachment } from "./chat-attachm
 import type { SessionCompanionContextReader } from "./session-companion-context.js";
 import { SessionCompanionAskError } from "./session-companion-errors.js";
 import {
+  buildSessionCompanionForkSystemPrompt,
   buildSessionCompanionSystemPrompt,
   resolveSessionCompanionModel,
   resolveSessionCompanionCliRuntime,
@@ -63,6 +65,10 @@ type SessionCompanionRunParams = {
   workspaceDir: string;
   systemPrompt: string;
   messages: SessionCompanionPromptMessage[];
+  /** This Side chat thread's earlier answered questions. */
+  exchanges?: SessionCompanionExchange[];
+  /** Fresh native CLI session binding of the observed session, by CLI runtime. */
+  readCliSessionBinding?: (provider: string) => CliSessionBinding | undefined;
   images?: ImageContent[];
   operatorAuthority?: AdmittedRunOperatorAuthority;
   assertSourceCurrent?: () => void;
@@ -123,7 +129,34 @@ function toRunnerHistoryMessage(
   };
 }
 
+/** A fork of the observed CLI session failed before it answered. */
+class SessionCompanionForkError extends Error {
+  constructor(cause: unknown) {
+    super("Side chat could not fork the observed CLI session", { cause });
+    this.name = "SessionCompanionForkError";
+  }
+}
+
 async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
+  try {
+    return await runSessionCompanionOnce(params, { allowSessionFork: true });
+  } catch (error) {
+    if (!(error instanceof SessionCompanionForkError) || params.signal.aborted) {
+      throw error;
+    }
+    // A stale or unreadable native session must not cost the operator an answer.
+    companionLog.warn("session companion fork failed; answering from the transcript excerpt", {
+      sessionKey: params.sessionKey,
+      error: error.cause,
+    });
+    return await runSessionCompanionOnce(params, { allowSessionFork: false });
+  }
+}
+
+async function runSessionCompanionOnce(
+  params: SessionCompanionRunParams,
+  options: { allowSessionFork: boolean },
+): Promise<string> {
   params.assertSourceCurrent?.();
   params.assertInputCurrent?.();
   const selectedModel = resolveSessionCompanionModel({
@@ -186,6 +219,9 @@ async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
       executionStarted = true;
       const answer = await runSessionCompanionViaCliRuntime({
         ...params,
+        observedCliSessionBinding: options.allowSessionFork
+          ? params.readCliSessionBinding?.(cliRuntime)
+          : undefined,
         cliRuntime,
         modelId: selectedModel.modelId,
         requesterModel: { provider: selectedModel.provider, model: selectedModel.modelId },
@@ -302,11 +338,15 @@ async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
 /**
  * Subscription-backed CLI runtimes have no direct provider credential, so Side
  * chat runs as a tool-free, one-shot side question on the owning CLI backend.
- * The bounded reference context stands in for the read-only session tools,
- * which the CLI bridge cannot scope to the observed session.
+ * When the observed session runs on that backend and it supports it, the
+ * question runs in an unsaved fork of the session's own native conversation,
+ * which includes the tool calls of a turn still running. Otherwise the bounded
+ * reference context stands in for the read-only session tools, which the CLI
+ * bridge cannot scope to the observed session.
  */
 async function runSessionCompanionViaCliRuntime(
   params: SessionCompanionRunParams & {
+    observedCliSessionBinding?: CliSessionBinding;
     cliRuntime: string;
     modelId: string;
     requesterModel: { provider: string; model: string };
@@ -347,6 +387,15 @@ async function runSessionCompanionViaCliRuntime(
         imageCount: 0,
       }),
       extraSystemPrompt: params.systemPrompt,
+      ...(params.observedCliSessionBinding
+        ? {
+            sideQuestionSessionFork: {
+              binding: params.observedCliSessionBinding,
+              prompt: buildBtwForkedSessionPrompt({ question, exchanges: params.exchanges }),
+              extraSystemPrompt: buildSessionCompanionForkSystemPrompt(params.sessionKey),
+            },
+          }
+        : {}),
       executionMode: "side-question",
       provider: params.cliRuntime,
       model: params.modelId,
@@ -360,7 +409,14 @@ async function runSessionCompanionViaCliRuntime(
     });
     params.abortSignal.throwIfAborted();
     params.assertSourceCurrent?.();
-    return (await executePreparedCliRun(prepared)).text;
+    if (!prepared.sideQuestionForkCliSessionId) {
+      return (await executePreparedCliRun(prepared)).text;
+    }
+    try {
+      return (await executePreparedCliRun(prepared)).text;
+    } catch (error) {
+      throw params.abortSignal.aborted ? error : new SessionCompanionForkError(error);
+    }
   } finally {
     await prepared?.preparedBackend.cleanup?.();
   }
@@ -603,6 +659,13 @@ export function createSessionCompanionAskRuntime(params: SessionCompanionAskRunt
         workspaceDir,
         systemPrompt: buildSessionCompanionSystemPrompt(sessionKey),
         messages,
+        exchanges: [...thread.exchanges],
+        ...(contextReader.cliSessionBinding
+          ? {
+              readCliSessionBinding: (provider: string) =>
+                contextReader.cliSessionBinding?.({ agentId, sessionKey, provider }),
+            }
+          : {}),
         ...(input.images.length ? { images: input.images } : {}),
         ...(request.operatorAuthority ? { operatorAuthority: request.operatorAuthority } : {}),
         assertSourceCurrent,

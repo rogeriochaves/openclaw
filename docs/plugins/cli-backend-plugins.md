@@ -252,6 +252,7 @@ only for behavior that really belongs to the backend.
 | `toolAvailabilityEnforcement`      | Declare whether exact tool caps are enforced in argv or execution staging   |
 | `projectNativeToolAuthority`       | Map the observed native tool list to canonical capabilities for cron caps   |
 | `sideQuestionToolMode`             | Declare disabled native tools for `/btw` side questions                     |
+| `sideQuestionSessionFork`          | Let `/btw` and Side chat read the live native session as an unsaved fork    |
 | `bundleMcp` / `bundleMcpMode`      | Opt into OpenClaw's loopback MCP tool bridge                                |
 | `ownsNativeCompaction`             | Backend owns its own automatic compaction - OpenClaw defers                 |
 | `manualCompaction`                 | Atomic command, transport, and positive-acknowledgement contract            |
@@ -329,6 +330,14 @@ BTW. If a backend normally has `nativeToolMode: "always-on"` but its
 side-question argv reliably disables those tools, also set
 `sideQuestionToolMode: "disabled"`; otherwise OpenClaw fails closed when BTW
 requires a no-tools CLI run.
+
+Set `sideQuestionSessionFork: "unsaved"` when a side question can read the
+observed session's own native conversation, including a turn still running.
+OpenClaw then passes `ctx.useResume` and `ctx.forkResume` as `true` with the
+session's resume argv on side-question runs and appends `forkArg`. Your side-question argv must keep the
+resume arguments and disable session persistence, so the source session gets
+no writes. Without this field, side questions get a bounded transcript excerpt
+in the prompt instead.
 
 Set `nativeToolMode: "selectable"` only when the backend can disable every
 backend-native tool for an individual run. Restricted runs receive a canonical

@@ -180,6 +180,7 @@ export function buildAnthropicCliBackend(
     isolatesInstructionsWithExactTools: true,
     projectNativeToolAuthority: projectClaudeNativeToolAuthority,
     sideQuestionToolMode: "disabled",
+    sideQuestionSessionFork: "unsaved",
     ownsNativeCompaction: true,
     manualCompaction: {
       buildPrompt: (customInstructions) => {

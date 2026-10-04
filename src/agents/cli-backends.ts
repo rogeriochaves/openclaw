@@ -39,6 +39,7 @@ export type ResolvedCliBackend = Pick<
   | "nativeToolMode"
   | "hostOwnedTools"
   | "sideQuestionToolMode"
+  | "sideQuestionSessionFork"
   | "runtimeArtifact"
 > & {
   bundleMcp: boolean;
@@ -294,6 +295,7 @@ export function resolveCliBackendConfig(
     nativeToolMode: backend.nativeToolMode,
     hostOwnedTools: backend.hostOwnedTools,
     sideQuestionToolMode: backend.sideQuestionToolMode,
+    sideQuestionSessionFork: backend.sideQuestionSessionFork,
     runtimeArtifact: backend.runtimeArtifact,
   };
 }

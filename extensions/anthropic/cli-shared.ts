@@ -353,12 +353,21 @@ function stripClaudeArgs(
   return normalized;
 }
 
-function resolveClaudeCliSideQuestionExecutionArgs(baseArgs: readonly string[]): string[] {
+// A side question that resumes the observed session keeps only its resume target;
+// the runner appends --fork-session and the argv below disables persistence.
+const CLAUDE_SIDE_QUESTION_FORK_VALUE_ARGS = new Set(
+  [...CLAUDE_SIDE_QUESTION_VALUE_ARGS].filter((arg) => arg !== "--resume"),
+);
+
+function resolveClaudeCliSideQuestionExecutionArgs(
+  baseArgs: readonly string[],
+  forkResume: boolean,
+): string[] {
   return [
     ...stripClaudeArgs(stripClaudeEffortArgs(baseArgs), {
       bare: CLAUDE_SIDE_QUESTION_BARE_ARGS,
       variadicValue: CLAUDE_SIDE_QUESTION_VARIADIC_VALUE_ARGS,
-      value: CLAUDE_SIDE_QUESTION_VALUE_ARGS,
+      value: forkResume ? CLAUDE_SIDE_QUESTION_FORK_VALUE_ARGS : CLAUDE_SIDE_QUESTION_VALUE_ARGS,
     }),
     CLAUDE_SAFE_MODE_ARG,
     CLAUDE_TOOLS_ARG,
@@ -448,7 +457,10 @@ export function resolveClaudeCliExecutionArgs(
     : context.baseArgs;
   const executionArgs =
     context.executionMode === "side-question"
-      ? resolveClaudeCliSideQuestionExecutionArgs(baseArgs)
+      ? resolveClaudeCliSideQuestionExecutionArgs(
+          baseArgs,
+          context.useResume && context.forkResume === true,
+        )
       : applyClaudeCliEffortArgs(baseArgs, context.thinkingLevel, context.modelId);
   const resolvedArgs = context.toolAvailability
     ? resolveClaudeCliRestrictedExecutionArgs(executionArgs, context.toolAvailability)

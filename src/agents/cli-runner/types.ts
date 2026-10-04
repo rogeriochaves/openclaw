@@ -129,6 +129,18 @@ export type RunCliAgentParams = {
   cliSessionBinding?: CliSessionBinding;
   /** Consume the backend fork argument on this resume invocation only. */
   forkCliSessionOnResume?: boolean;
+  /**
+   * Side questions only: the observed session's native binding. Backends that
+   * declare `sideQuestionSessionFork: "unsaved"` answer from an unsaved fork of
+   * it, so the answer sees the live conversation, including a running turn.
+   * The fork runs `prompt` (and `extraSystemPrompt` when set) instead of the
+   * run's own, which carry a history excerpt for runs without a fork.
+   */
+  sideQuestionSessionFork?: {
+    binding: CliSessionBinding;
+    prompt: string;
+    extraSystemPrompt?: string;
+  };
   /** Bound a resumed fork at this previously observed assistant checkpoint. */
   cliSessionResumeAt?: string;
   /** Atomically claim the persisted one-shot marker after the CLI queue admits this turn. */
@@ -252,6 +264,8 @@ export type PreparedCliRunContext = {
   /** Keeps a plugin-owned turn admitted on its backend instance across a plugin hot reload. */
   pluginExecutionConsumer?: PluginInstanceConsumer;
   reusableCliSession: CliReusableSession;
+  /** Native session a side question resumes as an unsaved fork. */
+  sideQuestionForkCliSessionId?: string;
   /** Resume is safe only while the exact managed Claude stdio child still exists. */
   requiredClaudeLiveSessionGeneration?: string;
   hadSessionFile: boolean;

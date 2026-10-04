@@ -924,6 +924,52 @@ describe("runCliAgent spawn path", () => {
     expect(input.input).toContain("hi");
   });
 
+  it("forks the observed Claude session for side questions without queueing behind its turn", async () => {
+    const resumeBackend = {
+      resumeArgs: ["-p", "--output-format", "stream-json", "--resume", "{sessionId}"],
+      forkArg: "--fork-session",
+    };
+    const mainSpawned = createDeferred<void>();
+    const mainExit = createDeferred<ReturnType<typeof createSuccessfulProcessExit>>();
+    const mainRun = createManagedRun(createSuccessfulProcessExit());
+    mainRun.wait = vi.fn(() => mainExit.promise);
+    supervisorSpawnMock.mockImplementationOnce(async () => {
+      mainSpawned.resolve();
+      return mainRun;
+    });
+    const mainTurn = executePreparedCliRun(
+      buildPreparedCliRunContext({ runId: "run-main-turn", backend: resumeBackend }),
+      "observed-session",
+    );
+    await mainSpawned.promise;
+
+    mockSuccessfulCliRun(CLAUDE_OK_JSONL);
+    const resolveExecutionArgs = vi.fn(({ baseArgs }) => [...baseArgs, "--no-session-persistence"]);
+    const sideQuestion = buildPreparedCliRunContext({
+      runId: "run-claude-side-question-fork",
+      executionMode: "side-question",
+      backend: { ...resumeBackend, sessionMode: "none" },
+      resolveExecutionArgs,
+    });
+    sideQuestion.sideQuestionForkCliSessionId = "observed-session";
+
+    // The main turn still holds its session queue; the fork must not wait for it.
+    await expect(executePreparedCliRun(sideQuestion)).resolves.toMatchObject({ text: "ok" });
+    const resolveArgsInput = requireRecord(mockCallArg(resolveExecutionArgs), "resolved args");
+    expect(resolveArgsInput).toMatchObject({
+      executionMode: "side-question",
+      useResume: true,
+      forkResume: true,
+    });
+    const input = supervisorSpawnMock.mock.calls[1]?.[0] as { argv?: string[] };
+    expect(requireArgAfter(input.argv, "--resume")).toBe("observed-session");
+    expect(input.argv).toContain("--fork-session");
+    expect(input.argv).not.toContain("--session-id");
+
+    mainExit.resolve({ ...createSuccessfulProcessExit(), stdout: CLAUDE_OK_JSONL });
+    await expect(mainTurn).resolves.toMatchObject({ text: "ok" });
+  });
+
   it("fails closed when a selectable backend does not enforce exact tool availability", async () => {
     const resolveExecutionArgs = vi.fn(() => undefined);
 

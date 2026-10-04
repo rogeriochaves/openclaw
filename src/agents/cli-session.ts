@@ -229,6 +229,42 @@ function normalizeCliMessageToolPolicyHash(value: string | undefined): string | 
     : hash;
 }
 
+/**
+ * A side question may read the observed native session as an unsaved fork only
+ * on a backend that declares it, from the same auth profile and working
+ * directory the session was stored under (the CLI finds sessions by cwd).
+ */
+export function resolveSideQuestionForkCliSessionId(params: {
+  binding?: CliSessionBinding;
+  sideQuestionSessionFork?: "unsaved";
+  forkArg?: string;
+  resumeArgs?: readonly string[];
+  authProfileId?: string;
+  cwdHash?: string;
+}): string | undefined {
+  const sessionId = normalizeOptionalString(params.binding?.sessionId);
+  if (
+    !sessionId ||
+    params.sideQuestionSessionFork !== "unsaved" ||
+    !params.forkArg ||
+    !params.resumeArgs?.length
+  ) {
+    return undefined;
+  }
+  if (
+    normalizeOptionalString(params.binding?.authProfileId) !==
+    normalizeOptionalString(params.authProfileId)
+  ) {
+    return undefined;
+  }
+  // Legacy bindings without a cwd hash cannot prove where the CLI stored them.
+  const storedCwdHash = normalizeOptionalString(params.binding?.cwdHash);
+  if (!storedCwdHash || storedCwdHash !== normalizeOptionalString(params.cwdHash)) {
+    return undefined;
+  }
+  return sessionId;
+}
+
 /** Decide whether a stored CLI session can be reused for the current auth/prompt/cwd/MCP state. */
 export function resolveCliSessionReuse(params: {
   binding?: CliSessionBinding;
