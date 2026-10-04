@@ -69,18 +69,21 @@ export function buildPendingInputItems(
       ),
     );
     if (input.state === "queued") {
-      if (input.runId && (workerSetupPending || workspaceSyncPendingRunIds.includes(input.runId))) {
-        items.push({
-          kind: "notice",
-          key: `pending-input:${input.id}:state`,
-          timestamp: input.acceptedAt,
-          text: t(
-            workerSetupPending
+      const setupPending =
+        input.runId && (workerSetupPending || workspaceSyncPendingRunIds.includes(input.runId));
+      // Without a label, input waiting behind a busy run looks already sent.
+      items.push({
+        kind: "notice",
+        key: `pending-input:${input.id}:state`,
+        timestamp: input.acceptedAt,
+        text: t(
+          !setupPending
+            ? "chat.pendingInputs.queued"
+            : workerSetupPending
               ? "chat.pendingInputs.waitingForWorkerSetup"
               : "chat.pendingInputs.waitingForWorkspaceSync",
-          ),
-        });
-      }
+        ),
+      });
       continue;
     }
     items.push({

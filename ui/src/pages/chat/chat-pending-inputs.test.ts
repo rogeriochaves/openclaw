@@ -116,7 +116,7 @@ describe("server-owned pending input display", () => {
   });
 
   it.each([
-    { state: "queued", runId: undefined, notice: undefined },
+    { state: "queued", runId: undefined, notice: "Queued · runs when the current turn ends" },
     {
       state: "interrupted",
       runId: "run-queued",
@@ -900,7 +900,7 @@ describe("server-owned pending input display", () => {
     });
   });
 
-  it("keeps unconsumed input after persisted history without a generic queue notice", () => {
+  it("keeps unconsumed input after persisted history with a queued notice", () => {
     // Custody accepted at 100 is not in the transcript, so it floors after the
     // reply persisted at 150 instead of interleaving by acceptance time.
     const earlier = { role: "assistant", content: "Earlier reply", timestamp: 50 };
@@ -925,6 +925,7 @@ describe("server-owned pending input display", () => {
         role: "user",
         messages: [{ message: { content: "Keep my accepted input" } }],
       },
+      { kind: "notice", text: "Queued · runs when the current turn ends" },
     ]);
   });
 

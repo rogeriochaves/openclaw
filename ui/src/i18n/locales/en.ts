@@ -4168,6 +4168,7 @@ export const en: TranslationMap & {
     pendingInputs: {
       waitingForWorkspaceSync: "Received · waiting for workspace sync",
       waitingForWorkerSetup: "Received · waiting for worker setup",
+      queued: "Queued · runs when the current turn ends",
       resuming:
         "Interrupted by a Gateway restart. This saved message will resume when the session is ready.",
       cancelled:

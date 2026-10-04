@@ -187,7 +187,9 @@ it("invalidates cached custody notices when workspace sync ownership changes", (
   expect(waiting.filter((item) => item.kind === "notice").map((item) => item.text)).toEqual([
     "Received · waiting for workspace sync",
   ]);
-  expect(active.filter((item) => item.kind === "notice")).toEqual([]);
+  expect(active.filter((item) => item.kind === "notice").map((item) => item.text)).toEqual([
+    "Queued · runs when the current turn ends",
+  ]);
 });
 
 function queuedSend(
