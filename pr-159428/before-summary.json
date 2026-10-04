@@ -1,0 +1,90 @@
+{
+  "label": "before",
+  "frames": 6623,
+  "historyRequests": 1,
+  "jumpFrames": 28,
+  "maxJump": 316,
+  "totalJump": 4280,
+  "worst": [
+    {
+      "frame": 3344,
+      "messageId": "msg:id:b div",
+      "jump": 316,
+      "scrollTop": 35027,
+      "scrollHeight": 217192,
+      "programmatic": 0
+    },
+    {
+      "frame": 3950,
+      "messageId": "msg:id:2 div",
+      "jump": 316,
+      "scrollTop": 27768,
+      "scrollHeight": 243899,
+      "programmatic": 0
+    },
+    {
+      "frame": 4932,
+      "messageId": "msg:id:1 div",
+      "jump": 316,
+      "scrollTop": 17102,
+      "scrollHeight": 287480,
+      "programmatic": 0
+    },
+    {
+      "frame": 6160,
+      "messageId": "msg:id:a div",
+      "jump": 316,
+      "scrollTop": 703,
+      "scrollHeight": 339016,
+      "programmatic": 0
+    },
+    {
+      "frame": 1885,
+      "messageId": "msg:id:3 div",
+      "jump": -222.7,
+      "scrollTop": 51583,
+      "scrollHeight": 155406,
+      "programmatic": 0
+    },
+    {
+      "frame": 1886,
+      "messageId": "msg:id:3 div",
+      "jump": 222.7,
+      "scrollTop": 51583,
+      "scrollHeight": 155629,
+      "programmatic": 0
+    },
+    {
+      "frame": 3343,
+      "messageId": "msg:id:b div",
+      "jump": -222.7,
+      "scrollTop": 35027,
+      "scrollHeight": 216876,
+      "programmatic": 0
+    },
+    {
+      "frame": 3949,
+      "messageId": "msg:id:2 div",
+      "jump": -222.7,
+      "scrollTop": 27768,
+      "scrollHeight": 243583,
+      "programmatic": 0
+    },
+    {
+      "frame": 4931,
+      "messageId": "msg:id:0 div",
+      "jump": -222.7,
+      "scrollTop": 17102,
+      "scrollHeight": 287164,
+      "programmatic": 0
+    },
+    {
+      "frame": 6159,
+      "messageId": "msg:id:6 div",
+      "jump": -222.7,
+      "scrollTop": 703,
+      "scrollHeight": 338700,
+      "programmatic": 0
+    }
+  ]
+}
