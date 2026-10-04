@@ -12,6 +12,7 @@ import { registerChatCameraEnglish } from "../../ui/src/i18n/locales/en-chat-cam
 import { registerChatCiEnglish } from "../../ui/src/i18n/locales/en-chat-ci.ts";
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
 import { registerChatMessageMetadataEnglish } from "../../ui/src/i18n/locales/en-chat-message-metadata.ts";
+import { registerChatNativeSubagentEnglish } from "../../ui/src/i18n/locales/en-chat-native-subagent.ts";
 import { registerChatProviderReviewEnglish } from "../../ui/src/i18n/locales/en-chat-provider-review.ts";
 import { registerCodeBlocksEnglish } from "../../ui/src/i18n/locales/en-code-blocks.ts";
 import { registerCommandPaletteEnglish } from "../../ui/src/i18n/locales/en-command-palette.ts";
@@ -76,6 +77,7 @@ const sourceFiles = [
   "en-chat-ci.ts",
   "en-chat-goals.ts",
   "en-chat-message-metadata.ts",
+  "en-chat-native-subagent.ts",
   "en-chat-provider-review.ts",
   "en-code-blocks.ts",
   "en-command-palette.ts",
@@ -188,6 +190,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
     registerChatCameraEnglish.catalog,
     registerChatCiEnglish.catalog,
     registerChatGoalsEnglish.catalog,
+    registerChatNativeSubagentEnglish.catalog,
     registerChatProviderReviewEnglish.catalog,
     registerCodeBlocksEnglish.catalog,
     registerCronEnglish.catalog,

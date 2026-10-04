@@ -12,6 +12,7 @@ import {
 import { compareValidSemver } from "../../infra/semver.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { applySkillEnvOverridesFromSnapshot } from "../../skills/runtime/env-overrides.js";
+import { markCliSessionActive } from "../cli-active-sessions.js";
 import {
   fingerprintCliRuntimeArtifact,
   resolveCliRuntimeOwnerFingerprint,
@@ -618,6 +619,14 @@ export async function executePreparedCliRun(
       toolSummary: events.getToolSummary(),
     });
   };
+  const releaseActiveCliSession =
+    resolvedSessionId && params.sessionKey
+      ? markCliSessionActive({
+          backendId: context.backendResolved.id,
+          sessionKey: params.sessionKey,
+          cliSessionId: resolvedSessionId,
+        })
+      : undefined;
   try {
     completedOutput = await enqueueCliRun(queueKey, () => {
       const runQueuedAttempt = async () => {
@@ -672,6 +681,7 @@ export async function executePreparedCliRun(
     }
     throw failure;
   } finally {
+    releaseActiveCliSession?.();
     try {
       await runCliCleanup(params, "cli-outer-resource", async () => {
         await systemPromptFile?.cleanup();

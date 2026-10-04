@@ -31,6 +31,7 @@ export const en: TranslationMap & {
       >;
     pullRequests: TranslationMap;
     processesPanel: TranslationMap;
+    toolCards: TranslationMap;
   };
   configForm: TranslationMap & { sections: TranslationMap };
   configPage: TranslationMap;

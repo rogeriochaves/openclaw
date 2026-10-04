@@ -655,4 +655,5 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["worktrees.retireSnapshot", "worktrees", "operator.admin", "2026.9", CONTROL_PLANE_WRITE],
   ["sessions.processes.list", "session-processes", "operator.read", "2026.9", OBSERVATION],
   ["sessions.processes.stop", "session-processes", "operator.write", "2026.9"],
+  ["chat.nativeSubagent.get", "chat", "operator.read", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

@@ -20,6 +20,7 @@ import {
 } from "./chat-broadcast.js";
 import { chatHistoryHandlers } from "./chat-history-handler.js";
 import { chatMessageGetHandlers } from "./chat-message-get-handler.js";
+import { chatNativeSubagentHandlers } from "./chat-native-subagent-handler.js";
 import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -27,6 +28,7 @@ import { assertValidParams } from "./validation.js";
 export const chatHandlers: GatewayRequestHandlers = {
   ...chatHistoryHandlers,
   ...chatMessageGetHandlers,
+  ...chatNativeSubagentHandlers,
   "chat.toolTitles": async ({ params, respond }) => {
     if (!assertValidParams(params, validateChatToolTitlesParams, "chat.toolTitles", respond)) {
       return;

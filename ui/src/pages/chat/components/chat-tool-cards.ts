@@ -421,6 +421,26 @@ export function renderToolApprovalReviews(card: ToolCard) {
   `;
 }
 
+// Claude Code names its subagent spawning tool `Agent` (formerly `Task`).
+function isNativeSubagentToolCard(card: ToolCard): boolean {
+  return Boolean(card.callId) && (card.name === "Agent" || card.name === "Task");
+}
+
+function renderNativeSubagent(
+  card: ToolCard,
+  opts: ToolRenderOptions & { messageKey: string },
+): unknown {
+  if (!opts.sessionKey || !isNativeSubagentToolCard(card)) {
+    return undefined;
+  }
+  // Keep the viewer out of startup JS; the tag upgrades once its chunk loads.
+  void import("./chat-native-subagent.ts");
+  return html`<openclaw-chat-native-subagent
+    .toolCallId=${card.callId}
+    .toolOptions=${opts}
+  ></openclaw-chat-native-subagent>`;
+}
+
 export function renderToolCard(
   originalCard: ToolCard,
   opts: ToolRenderOptions & {
@@ -444,6 +464,9 @@ export function renderToolCard(
     (item) => resolveToolCardOutcome(item, opts.runActive) === "running",
   );
   const expanded = opts.expanded;
+  // Nested operations own the expanded body; otherwise a spawned subagent's activity does.
+  const children =
+    opts.children ?? (expanded ? renderNativeSubagent(originalCard, opts) : undefined);
   const icon = TOOL_ROW_ICONS[view.kind] ?? display.icon;
   const workspaceFilePath = toolWorkspacePath(card, view);
   const isFileRow = Boolean(workspaceFilePath);
@@ -510,9 +533,9 @@ export function renderToolCard(
         }
         ${
           expanded
-            ? opts.children
+            ? children
               ? html`<div class="chat-tool-children">
-                  ${opts.children}
+                  ${children}
                   <details class="chat-tool-wrapper-details">
                     <summary>${t("chat.toolCards.toolInput")}</summary>
                     <div class="chat-tool-msg-body">

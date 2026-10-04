@@ -564,6 +564,7 @@ export const validateChatHistoryParams = compile(S.ChatHistoryParamsSchema);
 export const validateChatStartupParams = compile(S.ChatStartupParamsSchema);
 export const validateChatMetadataParams = compile(S.ChatMetadataParamsSchema);
 export const validateChatMessageGetParams = compile(S.ChatMessageGetParamsSchema);
+export const validateChatNativeSubagentGetParams = compile(S.ChatNativeSubagentGetParamsSchema);
 export const validateChatToolTitlesParams = compile(S.ChatToolTitlesParamsSchema);
 export const validateChatSendParams = compile(S.ChatSendParamsSchema);
 export const validateChatAbortParams = compile(S.ChatAbortParamsSchema);

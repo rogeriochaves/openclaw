@@ -277,6 +277,7 @@ describe("listGatewayMethods", () => {
       "worktrees.retireSnapshot",
       "sessions.processes.list",
       "sessions.processes.stop",
+      "chat.nativeSubagent.get",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -360,6 +361,7 @@ describe("listGatewayMethods", () => {
       "worktrees.retireSnapshot",
       "sessions.processes.list",
       "sessions.processes.stop",
+      "chat.nativeSubagent.get",
     ]);
   });
 
@@ -571,6 +573,7 @@ describe("listGatewayMethods", () => {
       "worktrees.retireSnapshot",
       "sessions.processes.list",
       "sessions.processes.stop",
+      "chat.nativeSubagent.get",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

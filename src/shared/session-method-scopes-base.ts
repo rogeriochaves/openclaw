@@ -36,6 +36,7 @@ const SESSION_READ_METHODS: ReadonlySet<string> = new Set([
   "chat.startup",
   "chat.metadata",
   "chat.message.get",
+  "chat.nativeSubagent.get",
   "session.members.list",
   "session.members.listEvidence",
   "themes.get",
