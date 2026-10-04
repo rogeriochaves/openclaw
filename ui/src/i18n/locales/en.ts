@@ -28,6 +28,7 @@ export const en: TranslationMap & {
         string
       >;
     pullRequests: TranslationMap;
+    toolCards: TranslationMap;
   };
   configPage: TranslationMap;
   connection: TranslationMap;

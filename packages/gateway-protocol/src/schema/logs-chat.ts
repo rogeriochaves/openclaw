@@ -241,6 +241,35 @@ export const ChatMessageGetResultSchema = closedObject({
 /** Typed result shape for callers that branch on message availability. */
 export type ChatMessageGetResult = Static<typeof ChatMessageGetResultSchema>;
 
+/**
+ * Reads the native subagent (Claude Code `Agent`/`Task` tool) spawned by one tool
+ * call of a claude-cli session. `cursor` resumes after the rows a prior read returned.
+ */
+export const ChatNativeSubagentGetParamsSchema = closedObject({
+  sessionKey: NonEmptyString,
+  agentId: Type.Optional(NonEmptyString),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+  cursor: Type.Optional(Type.Integer({ minimum: 0 })),
+  maxChars: Type.Optional(Type.Integer({ minimum: 1, maximum: 200_000 })),
+});
+
+/** Display-projected subagent rows plus the state needed to keep reading them. */
+export const ChatNativeSubagentGetResultSchema = closedObject({
+  ok: Type.Boolean(),
+  unavailableReason: Type.Optional(Type.Literal("not_found")),
+  agentType: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  background: Type.Optional(Type.Boolean()),
+  status: Type.Optional(Type.Union([Type.Literal("running"), Type.Literal("done")])),
+  updatedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  messages: Type.Optional(Type.Array(Type.Unknown())),
+  cursor: Type.Optional(Type.Integer({ minimum: 0 })),
+  omittedEarlier: Type.Optional(Type.Boolean()),
+  reset: Type.Optional(Type.Boolean()),
+  more: Type.Optional(Type.Boolean()),
+});
+export type ChatNativeSubagentGetResult = Static<typeof ChatNativeSubagentGetResultSchema>;
+
 /** Permissive attachment envelope shared by chat and session entrypoints. */
 export const ChatAttachmentSchema = Type.Object(
   {

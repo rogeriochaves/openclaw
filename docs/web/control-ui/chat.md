@@ -660,6 +660,24 @@ are currently capped at 8,000 characters per text block. The Chat panel's full-t
 after a temporary session is removed; loading earlier messages does not recover
 a capped reply's missing text.
 
+### Claude Code subagents
+
+When an agent runs on the `claude-cli` runtime and Claude Code starts a subagent
+with its `Agent` (or older `Task`) tool, expand that tool card to follow the
+subagent. A **Subagent** section shows its description and type, whether it runs
+in the background, and its text and tool calls as it works. The section reads new
+activity every two seconds while the subagent runs and stops once it replies; it
+reads the same activity again after a reload. Background subagents that report
+back later through a task notification show up the same way.
+
+The view is read-only. Through `chat.nativeSubagent.get`, the Gateway reads the
+transcript Claude Code writes for each subagent of the OpenClaw session's Claude
+session (under `CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude`): the bound one,
+or the one a running turn is writing before it is bound.
+It applies the same transcript redaction and per-field caps (4,000 characters by
+default) as chat history. Subagent transcripts over 8 MB start at their most
+recent activity. Other runtimes do not show the section.
+
 ## Conversations stopped for review
 
 When a provider stops a conversation as a misalignment precaution, chat holds
