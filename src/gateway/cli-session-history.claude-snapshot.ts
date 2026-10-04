@@ -64,6 +64,7 @@ type Message = Record<string, unknown>;
 export type ClaudeCliHistoryParams = {
   cliSessionId: string;
   homeDir?: string;
+  configDir?: string;
   localSessionId?: string;
   reseedReceipt?: CliSessionReseedReceipt;
 };

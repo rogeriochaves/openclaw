@@ -83,6 +83,8 @@ export type ChatHistoryPageParams = {
   messageId: string | undefined;
   ignoreCliSessionImports?: boolean;
   cliHistoryHomeDir?: string;
+  /** Claude Code CLAUDE_CONFIG_DIR; replaces `<cliHistoryHomeDir>/.claude` when set. */
+  cliHistoryConfigDir?: string;
   cliHistoryRedaction?: TranscriptRedactionSnapshot;
 };
 

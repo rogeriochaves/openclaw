@@ -274,6 +274,7 @@ function captureHistoryRequest(request: SessionHistoryWorkerRequest): SessionHis
       messageId: params.messageId,
       ignoreCliSessionImports: params.ignoreCliSessionImports,
       cliHistoryHomeDir: params.cliHistoryHomeDir,
+      cliHistoryConfigDir: params.cliHistoryConfigDir,
       ...(params.cliHistoryRedaction
         ? { cliHistoryRedaction: structuredClone(params.cliHistoryRedaction) }
         : {}),

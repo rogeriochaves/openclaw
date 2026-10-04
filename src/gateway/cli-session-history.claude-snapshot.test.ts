@@ -165,3 +165,17 @@ it("projects oversized Claude messages off-thread using one worker per snapshot"
     parseSpy.mockRestore();
   }
 });
+
+it("reads Claude sessions from CLAUDE_CONFIG_DIR instead of the home dir when set", async () => {
+  await withClaudeProjectsDir(async ({ homeDir, sessionId }) => {
+    const otherHome = await tempDirs.make("openclaw-claude-history-other-home-");
+    const params = { cliSessionId: sessionId, homeDir: otherHome };
+    expect(await readClaudeCliSessionMessagesAsync(params)).toEqual([]);
+    expect(
+      await readClaudeCliSessionMessagesAsync({
+        ...params,
+        configDir: path.join(homeDir, ".claude"),
+      }),
+    ).toHaveLength(3);
+  });
+});

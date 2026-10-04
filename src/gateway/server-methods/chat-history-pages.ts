@@ -23,6 +23,8 @@ function prepareChatHistoryParams<Params extends ChatHistoryPageParams>(input: P
     ? {
         ...input,
         cliHistoryHomeDir: process.env.HOME || os.homedir(),
+        // claude-cli runs inherit the gateway env, where Claude Code keeps its sessions.
+        cliHistoryConfigDir: process.env.CLAUDE_CONFIG_DIR,
         cliHistoryRedaction: captureTranscriptRedactionSnapshot(),
       }
     : input;

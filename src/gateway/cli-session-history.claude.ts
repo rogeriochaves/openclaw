@@ -78,7 +78,12 @@ export function redactClaudeCliHistoryMessage(
   ) as unknown as TranscriptLikeMessage;
 }
 
-function resolveClaudeProjectsDir(homeDir?: string): string {
+function resolveClaudeProjectsDir(homeDir?: string, configDir?: string): string {
+  // Claude Code keeps everything under CLAUDE_CONFIG_DIR when it is set, not ~/.claude.
+  const claudeConfigDir = normalizeOptionalString(configDir);
+  if (claudeConfigDir) {
+    return path.join(path.resolve(claudeConfigDir), "projects");
+  }
   return path.join(
     normalizeOptionalString(homeDir) || process.env.HOME || os.homedir(),
     CLAUDE_PROJECTS_RELATIVE_DIR,
@@ -449,12 +454,14 @@ function resolveClaudeCliSessionFilePath(params: {
 export async function resolveClaudeCliSessionFilePathAsync(params: {
   cliSessionId: string;
   homeDir?: string;
+  /** Claude Code's CLAUDE_CONFIG_DIR; replaces `<homeDir>/.claude` when set. */
+  configDir?: string;
 }): Promise<string | undefined> {
   const sessionId = normalizeClaudeCliSessionId(params.cliSessionId);
   if (!sessionId) {
     return undefined;
   }
-  const projectsDir = resolveClaudeProjectsDir(params.homeDir);
+  const projectsDir = resolveClaudeProjectsDir(params.homeDir, params.configDir);
   let projectEntries: fs.Dirent[];
   try {
     projectEntries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
