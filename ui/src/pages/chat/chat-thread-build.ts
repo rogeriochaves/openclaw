@@ -453,9 +453,23 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
   // Custody follows visible history. Choose its floor after canvas placement and
   // hidden-row filtering so the anchor survives projection insertion.
   const custodyFloor = items.at(-1)?.key;
+  // Only queued input waits at the live edge. Interrupted and cancelled input is
+  // history and keeps its own time.
+  const queuedInputKeys = new Set(
+    buildPendingInputItems(
+      pendingInputs.filter((input) => input.state === "queued"),
+      props.searchOpen ? props.searchQuery : undefined,
+      props.queue,
+      props.workspaceSyncPendingRunIds,
+      props.workerSetupPending,
+      props.messageRecovery,
+    ).map((item) => item.key),
+  );
   const projections: ChatProjection[] = pendingInputItems.map((item) => ({
     item,
-    ...(custodyFloor ? { bounds: { afterKey: custodyFloor } } : {}),
+    ...(custodyFloor && queuedInputKeys.has(item.key)
+      ? { bounds: { afterKey: custodyFloor } }
+      : {}),
   }));
   if (compaction && compactionKey && !hasPersistedCompaction) {
     const timestamp = compaction.startedAt ?? compaction.completedAt ?? Date.now();

@@ -82,3 +82,20 @@ describe("input queued behind a busy run", () => {
     ]);
   });
 });
+
+describe("input interrupted days ago", () => {
+  it("stays at its own time instead of jumping below later turns", () => {
+    const interrupted: PendingInput = {
+      ...queued,
+      state: "interrupted",
+      acceptedAt: SENT_AT - 60_000,
+      message: { ...queued.message, timestamp: SENT_AT - 60_000 },
+    };
+    expect(rows({ messages: [userTurn, reply], pendingInputs: [interrupted] })).toEqual([
+      "Those drafts break every rule.",
+      "Just my voice?",
+      `notice: ${t("chat.pendingInputs.interrupted")}`,
+      "I'm rebuilding the pipeline now.",
+    ]);
+  });
+});
