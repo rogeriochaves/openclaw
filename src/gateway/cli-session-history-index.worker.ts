@@ -202,6 +202,7 @@ export class CliSessionHistoryIndex {
   private readonly pendingImports: HistoryRow[] = [];
   private pendingImportBytes = 0;
   private nextLocal = 0;
+  private localTimestampFloor: number | undefined;
   private nextImport = 0;
   private expanded = false;
   count = 0;
@@ -363,7 +364,16 @@ export class CliSessionHistoryIndex {
         .map(({ message, seq }) => {
           const id = seq - 1;
           this.nextLocal = Math.max(this.nextLocal, id + 1);
-          return this.row(message, id, seq);
+          const row = this.row(message, id, seq);
+          // A prompt sent while a run is busy keeps its send time but is stored
+          // after that run's reply, and Claude records it when the queued turn
+          // starts. Match and order it from the row stored ahead of it.
+          const floor = this.localTimestampFloor;
+          if (row.role === "user" && row.timestamp !== null && floor !== undefined) {
+            row.timestamp = Math.max(row.timestamp, floor);
+          }
+          this.localTimestampFloor = row.timestamp ?? floor;
+          return row;
         });
       runSqliteImmediateTransactionSync(this.database, () => {
         for (const row of rows) {
