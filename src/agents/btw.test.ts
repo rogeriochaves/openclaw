@@ -1365,6 +1365,61 @@ describe("runBtwSideQuestion", () => {
     expect(streamSimpleMock).not.toHaveBeenCalled();
   });
 
+  const CLI_RUNTIME_CONFIG = {
+    agents: {
+      defaults: {
+        models: {
+          "anthropic/claude-opus-4-7": { agentRuntime: { id: "claude-cli" } },
+        },
+      },
+    },
+  } as never;
+
+  it("answers CLI BTW from the excerpt when the session fork fails", async () => {
+    const forkCleanup = vi.fn(async () => undefined);
+    prepareCliRunContextMock.mockResolvedValueOnce({
+      preparedBackend: { cleanup: forkCleanup },
+      sideQuestionForkCliSessionId: "stale-native-session",
+    });
+    executePreparedCliRunMock.mockRejectedValueOnce(new Error("No conversation found"));
+    const { cleanup } = mockCliOutput({ text: "Excerpt answer." });
+
+    const result = await runSideQuestion({
+      cfg: CLI_RUNTIME_CONFIG,
+      model: "claude-opus-4-7",
+      sessionEntry: createSessionEntry({
+        cliSessionBindings: { "claude-cli": { sessionId: "stale-native-session" } },
+      }),
+      sessionKey: DEFAULT_SESSION_KEY,
+    });
+
+    expect(result).toEqual({ text: "Excerpt answer." });
+    const forkParams = mockArg(prepareCliRunContextMock, 0, 0) as {
+      runId?: string;
+      sideQuestionSessionFork?: { binding?: { sessionId?: string } };
+    };
+    const retryParams = mockArg(prepareCliRunContextMock, 1, 0) as typeof forkParams;
+    expect(forkParams.sideQuestionSessionFork?.binding?.sessionId).toBe("stale-native-session");
+    expect(retryParams.sideQuestionSessionFork).toBeUndefined();
+    expect(retryParams.runId).not.toBe(forkParams.runId);
+    expect(forkCleanup).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry CLI BTW without a fork when the plain run fails", async () => {
+    prepareCliRunContextMock.mockResolvedValueOnce({ preparedBackend: {} });
+    executePreparedCliRunMock.mockRejectedValueOnce(new Error("CLI failed"));
+
+    await expect(
+      runSideQuestion({
+        cfg: CLI_RUNTIME_CONFIG,
+        model: "claude-opus-4-7",
+        sessionKey: DEFAULT_SESSION_KEY,
+      }),
+    ).rejects.toThrow("CLI failed");
+    expect(prepareCliRunContextMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not expose raw CLI BTW output when transformed text is empty", async () => {
     const { cleanup } = mockCliOutput({
       text: "   ",

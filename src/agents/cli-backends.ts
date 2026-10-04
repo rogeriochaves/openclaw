@@ -66,6 +66,7 @@ export type ResolvedCliBackend = {
   projectNativeToolAuthority?: CliBackendPlugin["projectNativeToolAuthority"];
   nativeToolMode?: CliBackendNativeToolMode;
   sideQuestionToolMode?: CliBackendSideQuestionToolMode;
+  sideQuestionSessionFork?: CliBackendPlugin["sideQuestionSessionFork"];
   runtimeArtifact?: CliBackendRuntimeArtifactPolicy;
 };
 
@@ -334,6 +335,7 @@ export function resolveCliBackendConfig(
     projectNativeToolAuthority: backend.projectNativeToolAuthority,
     nativeToolMode: backend.nativeToolMode,
     sideQuestionToolMode: backend.sideQuestionToolMode,
+    sideQuestionSessionFork: backend.sideQuestionSessionFork,
     runtimeArtifact: backend.runtimeArtifact,
   };
 }

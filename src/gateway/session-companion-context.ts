@@ -2,7 +2,9 @@ import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { readCatchupTranscriptRows } from "../agents/catchup-transcript.js";
 import type { CatchupTranscriptRow } from "../agents/catchup.js";
 import { extractStoredAssistantText } from "../agents/tools/chat-history-text.js";
+import { getCliSessionBinding } from "../config/sessions/cli-session-binding.js";
 import { readSessionTranscriptBoundedMessageTailPage } from "../config/sessions/session-accessor.sqlite-active-events.js";
+import type { CliSessionBinding } from "../config/sessions/types.js";
 import { redactToolPayloadText } from "../logging/redact.js";
 import type {
   SessionCompanionContextMessage,
@@ -24,6 +26,12 @@ type SessionCompanionContextReadResult =
 
 export type SessionCompanionContextReader = {
   currentSessionId: (params: { agentId: string; sessionKey: string }) => string | undefined;
+  /** Native CLI session the observed session runs on, read fresh for each question. */
+  cliSessionBinding?: (params: {
+    agentId: string;
+    sessionKey: string;
+    provider: string;
+  }) => CliSessionBinding | undefined;
   read: (params: {
     agentId: string;
     sessionKey: string;
@@ -270,5 +278,7 @@ export const defaultSessionCompanionCatchupReader: SessionCompanionCatchupReader
 export const defaultSessionCompanionContextReader: SessionCompanionContextReader = {
   currentSessionId: ({ agentId, sessionKey }) =>
     loadGatewaySessionEntryReadOnly(sessionKey, { agentId }).entry?.sessionId?.trim() || undefined,
+  cliSessionBinding: ({ agentId, sessionKey, provider }) =>
+    getCliSessionBinding(loadGatewaySessionEntryReadOnly(sessionKey, { agentId }).entry, provider),
   read: readSessionCompanionContext,
 };

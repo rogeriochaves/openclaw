@@ -567,6 +567,44 @@ describe("resolveClaudeCliExecutionArgs", () => {
       "default",
     ]);
   });
+
+  it("keeps only the resume target when a side question forks the observed session", () => {
+    expect(
+      resolveClaudeCliExecutionArgs({
+        workspaceDir: "/tmp",
+        provider: "claude-cli",
+        modelId: "claude-opus-4-7",
+        useResume: true,
+        forkResume: true,
+        executionMode: "side-question",
+        baseArgs: [
+          "-p",
+          "--resume",
+          "observed-session",
+          "--resume-session-at",
+          "old-message",
+          "--fork-session",
+          "--permission-mode",
+          "bypassPermissions",
+        ],
+      }),
+    ).toEqual([
+      "-p",
+      "--resume",
+      "observed-session",
+      "--safe-mode",
+      "--tools",
+      "",
+      "--disallowedTools",
+      "mcp__*",
+      "--strict-mcp-config",
+      "--no-session-persistence",
+      "--max-turns",
+      "1",
+      "--permission-mode",
+      "default",
+    ]);
+  });
 });
 
 describe("normalizeClaudeBackendConfig", () => {

@@ -79,3 +79,31 @@ export function buildBtwCliPrompt(params: {
   }
   return lines.join("\n");
 }
+
+/**
+ * Question for a side question that runs in an unsaved fork of the session's
+ * own native conversation, so the conversation itself needs no excerpt.
+ */
+export function buildBtwForkedSessionPrompt(params: {
+  question: string;
+  exchanges?: ReadonlyArray<{ question: string; answer: string }>;
+  imageCount?: number;
+}): string {
+  const lines = [
+    "This is a side question, apart from the conversation above. Answer it and stop.",
+    "Answer from what this conversation already holds.",
+    "The main turn may still be running. Its last tool call can show as interrupted by the user only because this side question branched off mid-call, so that marker does not mean anyone stopped it. Unless the conversation shows the call finished, say it has no result yet and is likely still running; you cannot confirm whether it is. Do not mention the interrupted marker or this branch in your answer.",
+    "Do not use tools. Do not continue, resume, or change any task.",
+  ];
+  if (params.exchanges?.length) {
+    lines.push("", "Earlier in this side chat:");
+    for (const exchange of params.exchanges) {
+      lines.push(`I asked: ${exchange.question.trim()}`, `You answered: ${exchange.answer.trim()}`);
+    }
+  }
+  lines.push("", "<btw_side_question>", params.question.trim(), "</btw_side_question>");
+  if (params.imageCount && params.imageCount > 0) {
+    lines.push(`[${params.imageCount} attached image(s) omitted from CLI side-question input.]`);
+  }
+  return lines.join("\n");
+}

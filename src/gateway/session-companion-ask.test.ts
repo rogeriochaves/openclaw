@@ -6,6 +6,7 @@ import { createStubTool } from "../agents/test-helpers/agent-tool-stubs.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import type { SessionCompanionContextReader } from "./session-companion-context.js";
 import { createSessionCompanion } from "./session-companion.js";
 
 const runEmbeddedAgent = vi.hoisted(() =>
@@ -70,11 +71,15 @@ vi.mock("../agents/simple-completion-runtime.js", () => ({
 vi.mock("../agents/cli-runner/prepare.runtime.js", () => ({ prepareCliRunContext }));
 vi.mock("../agents/cli-runner/execute.runtime.js", () => ({ executePreparedCliRun }));
 
-function createCompanion(cfg: OpenClawConfig = {}) {
+function createCompanion(
+  cfg: OpenClawConfig = {},
+  cliSessionBinding?: SessionCompanionContextReader["cliSessionBinding"],
+) {
   return createSessionCompanion({
     getConfig: () => cfg,
     contextReader: {
       currentSessionId: () => "session-1",
+      ...(cliSessionBinding ? { cliSessionBinding } : {}),
       read: async () => ({
         kind: "ready",
         context: { empty: true, messages: [], sessionId: "session-1" },
@@ -215,6 +220,111 @@ describe("session companion embedded invocation", () => {
       cliBackendsTesting.resetDepsForTest();
       companion.dispose();
     }
+  });
+
+  describe("on a Claude CLI session", () => {
+    type ForkParams = {
+      prompt?: string;
+      sideQuestionSessionFork?: {
+        binding: { sessionId: string };
+        prompt: string;
+        extraSystemPrompt?: string;
+      };
+    };
+    const cfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          workspace: "/tmp/companion-test",
+          model: "anthropic/claude-opus-4-6",
+          models: { "anthropic/claude-opus-4-6": { agentRuntime: { id: "claude-cli" } } },
+        },
+      },
+    };
+    const binding = { sessionId: "observed-native-session", cwdHash: "observed-cwd" };
+    const forkParams = (call: number) =>
+      prepareCliRunContext.mock.calls[call]?.[0] as ForkParams | undefined;
+
+    beforeEach(() => {
+      resolveSelection.mockReturnValue({ provider: "anthropic", modelId: "claude-haiku-4-5" });
+      cliBackendsTesting.setDepsForTest({
+        resolvePluginSetupCliBackend: () => undefined,
+        resolveRuntimeCliBackends: () => [
+          {
+            id: "claude-cli",
+            modelProvider: "anthropic",
+            pluginId: "anthropic",
+            config: { command: "claude" },
+          },
+        ],
+      });
+      prepareCliRunContext.mockImplementation(async (params) => {
+        const fork = (params as ForkParams).sideQuestionSessionFork;
+        return {
+          params,
+          preparedBackend: {},
+          ...(fork ? { sideQuestionForkCliSessionId: fork.binding.sessionId } : {}),
+        };
+      });
+      return () => {
+        resolveSelection.mockReset();
+        resolveSelection.mockReturnValue({ provider: "test", modelId: "model-a" });
+        prepareCliRunContext.mockReset();
+        prepareCliRunContext.mockImplementation(async (params) => ({
+          params,
+          preparedBackend: {},
+        }));
+        cliBackendsTesting.resetDepsForTest();
+      };
+    });
+
+    it("asks a fork of the observed native session, with this thread's earlier answers", async () => {
+      const readBinding = vi.fn(() => binding);
+      const companion = createCompanion(cfg, readBinding);
+      try {
+        await companion.ask(question);
+        executePreparedCliRun.mockResolvedValueOnce({ text: "It is running the test suite." });
+        await expect(
+          companion.ask({ ...question, question: "What command is running?" }),
+        ).resolves.toMatchObject({ answer: "It is running the test suite." });
+
+        // The binding is read for each question, so a running turn is never a stale snapshot.
+        expect(readBinding).toHaveBeenCalledTimes(2);
+        expect(readBinding).toHaveBeenLastCalledWith({
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          provider: "claude-cli",
+        });
+        const params = forkParams(1);
+        expect(params?.sideQuestionSessionFork).toMatchObject({
+          binding,
+          extraSystemPrompt: expect.stringContaining("forked so the operator can ask about it"),
+        });
+        const forkPrompt = params?.sideQuestionSessionFork?.prompt ?? "";
+        expect(forkPrompt).toContain("I asked: What is it doing?");
+        expect(forkPrompt).toContain("You answered: The session is fixing a bug.");
+        expect(forkPrompt).toContain("What command is running?");
+        expect(forkPrompt).not.toContain("private-session-reference");
+      } finally {
+        companion.dispose();
+      }
+    });
+
+    it("answers from the transcript excerpt when the fork fails", async () => {
+      executePreparedCliRun.mockRejectedValueOnce(new Error("No conversation found"));
+      const companion = createCompanion(cfg, () => binding);
+      try {
+        await expect(companion.ask(question)).resolves.toMatchObject({
+          answer: "The session is fixing a bug.",
+        });
+        expect(prepareCliRunContext).toHaveBeenCalledTimes(2);
+        expect(forkParams(0)?.sideQuestionSessionFork).toBeDefined();
+        expect(forkParams(1)).not.toHaveProperty("sideQuestionSessionFork");
+        expect(forkParams(1)?.prompt).toContain("What is it doing?");
+        expect(executePreparedCliRun).toHaveBeenCalledTimes(2);
+      } finally {
+        companion.dispose();
+      }
+    });
   });
 
   it("waits for admitted history persistence before starting the companion run", async () => {

@@ -93,6 +93,7 @@ import {
   buildCliSessionDriftNote,
   hashCliSessionText,
   resolveCliSessionReuse,
+  resolveSideQuestionForkCliSessionId,
 } from "../cli-session.js";
 import {
   claudeCliSessionTranscriptHasContent,
@@ -924,6 +925,27 @@ async function prepareCliRunContextWithinReadFence(
         authCredential = { ...authCredential, token: resolvedAuth.apiKey };
       }
     }
+  }
+  const sideQuestionFork = isSideQuestion ? params.sideQuestionSessionFork : undefined;
+  const sideQuestionForkCliSessionId = sideQuestionFork
+    ? resolveSideQuestionForkCliSessionId({
+        binding: sideQuestionFork.binding,
+        sideQuestionSessionFork: backendResolved.sideQuestionSessionFork,
+        forkArg: backendResolved.config.forkArg,
+        resumeArgs: backendResolved.config.resumeArgs,
+        authProfileId: effectiveAuthProfileId,
+        cwdHash,
+      })
+    : undefined;
+  if (sideQuestionFork && sideQuestionForkCliSessionId) {
+    // The fork already holds the conversation; it needs only the question.
+    params = {
+      ...params,
+      prompt: sideQuestionFork.prompt,
+      ...(sideQuestionFork.extraSystemPrompt !== undefined
+        ? { extraSystemPrompt: sideQuestionFork.extraSystemPrompt }
+        : {}),
+    };
   }
   const extraSystemPrompt = params.extraSystemPrompt?.trim() ?? "";
   const bindingFacts = params.cliSessionBindingFacts;
@@ -2206,6 +2228,7 @@ async function prepareCliRunContextWithinReadFence(
       executionTarget,
       ...(pluginExecutionConsumer ? { pluginExecutionConsumer } : {}),
       reusableCliSession,
+      ...(sideQuestionForkCliSessionId ? { sideQuestionForkCliSessionId } : {}),
       contextEngineConfig: runConfig,
       modelId,
       normalizedModel,

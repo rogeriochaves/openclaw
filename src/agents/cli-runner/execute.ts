@@ -155,13 +155,23 @@ export async function executePreparedCliRun(
   }
   const nodePlacement = executionTarget.kind === "node" ? executionTarget.placement : null;
   const usePluginOwnedExecution = executionTarget.kind === "plugin";
-  const { sessionId: resolvedSessionId, isNew } = resolveSessionIdToSend({
-    backend,
-    cliSessionId: cliSessionIdToUse,
-  });
+  // A side question reads the observed native session through an unsaved fork:
+  // it resumes that session without owning, queueing behind, or writing to it.
+  const sideQuestionForkCliSessionId = context.sideQuestionForkCliSessionId;
+  const { sessionId: resolvedSessionId, isNew } = sideQuestionForkCliSessionId
+    ? { sessionId: sideQuestionForkCliSessionId, isNew: false }
+    : resolveSessionIdToSend({
+        backend,
+        cliSessionId: cliSessionIdToUse,
+      });
   const useResume = Boolean(
-    cliSessionIdToUse && resolvedSessionId && backend.resumeArgs && backend.resumeArgs.length > 0,
+    (cliSessionIdToUse || sideQuestionForkCliSessionId) &&
+    resolvedSessionId &&
+    backend.resumeArgs &&
+    backend.resumeArgs.length > 0,
   );
+  const forkResume =
+    params.forkCliSessionOnResume === true || Boolean(sideQuestionForkCliSessionId);
   const resendSystemPromptForSoftResume = context.reusableCliSession.mode === "reuse-with-drift";
   const systemPromptArg = resolveSystemPromptUsage({
     backend,
@@ -256,7 +266,7 @@ export async function executePreparedCliRun(
   const queueKey = resolveCliRunQueueKey({
     backendId: context.backendResolved.id,
     liveSession: backend.liveSession,
-    serialize: backend.serialize,
+    serialize: sideQuestionForkCliSessionId ? false : backend.serialize,
     runId: params.runId,
     workspaceDir: context.workspaceDir,
     cliSessionId: useResume ? resolvedSessionId : undefined,
@@ -523,6 +533,7 @@ export async function executePreparedCliRun(
               ? { native: params.cliToolAvailability.native, openClaw: [] }
               : params.cliToolAvailability,
           useResume,
+          ...(useResume && forkResume ? { forkResume: true } : {}),
           baseArgs: baseArgsWithSkills,
         });
         if (
@@ -549,7 +560,7 @@ export async function executePreparedCliRun(
           imagePaths: imagePayload.imagePaths,
           promptArg: argsPrompt,
           useResume,
-          forkResume: params.forkCliSessionOnResume,
+          forkResume,
           resumeAt: params.cliSessionResumeAt,
           sendSystemPromptOnResume: resendSystemPromptForSoftResume,
         });

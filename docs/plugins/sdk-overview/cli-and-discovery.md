@@ -159,6 +159,8 @@ AI CLI backend such as `claude-cli` or `my-cli`.
   backend-native isolation flags for ephemeral `/btw` calls. If those flags
   reliably disable native tools for an otherwise always-on CLI, declare
   `sideQuestionToolMode: "disabled"` too.
+  Declare `sideQuestionSessionFork: "unsaved"` when side questions may resume
+  the observed native session as a fork that writes nothing back.
 - Use `prepareExecution` for backend-owned launch environment or temporary
   auth/config bridges. Its `ctx.contextTokenBudget` is the effective token
   limit selected for the run, so native-compaction backends can align their

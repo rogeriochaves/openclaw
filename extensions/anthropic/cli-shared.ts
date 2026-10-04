@@ -391,17 +391,29 @@ function stripClaudeArgs(
   return normalized;
 }
 
-function stripClaudeSideQuestionConflictingArgs(args: readonly string[]): string[] {
+// A side question that resumes the observed session keeps only its resume target;
+// the runner appends --fork-session and the argv below disables persistence.
+const CLAUDE_SIDE_QUESTION_FORK_VALUE_ARGS = new Set(
+  [...CLAUDE_SIDE_QUESTION_VALUE_ARGS].filter((arg) => arg !== "--resume"),
+);
+
+function stripClaudeSideQuestionConflictingArgs(
+  args: readonly string[],
+  forkResume: boolean,
+): string[] {
   return stripClaudeArgs(args, {
     bare: CLAUDE_SIDE_QUESTION_BARE_ARGS,
     variadicValue: CLAUDE_SIDE_QUESTION_VARIADIC_VALUE_ARGS,
-    value: CLAUDE_SIDE_QUESTION_VALUE_ARGS,
+    value: forkResume ? CLAUDE_SIDE_QUESTION_FORK_VALUE_ARGS : CLAUDE_SIDE_QUESTION_VALUE_ARGS,
   });
 }
 
-function resolveClaudeCliSideQuestionExecutionArgs(baseArgs: readonly string[]): string[] {
+function resolveClaudeCliSideQuestionExecutionArgs(
+  baseArgs: readonly string[],
+  forkResume: boolean,
+): string[] {
   return [
-    ...stripClaudeSideQuestionConflictingArgs(stripClaudeEffortArgs(baseArgs)),
+    ...stripClaudeSideQuestionConflictingArgs(stripClaudeEffortArgs(baseArgs), forkResume),
     CLAUDE_SAFE_MODE_ARG,
     CLAUDE_TOOLS_ARG,
     CLAUDE_NO_TOOLS_VALUE,
@@ -533,7 +545,10 @@ export function resolveClaudeCliExecutionArgs(
 ): string[] {
   const executionArgs = (() => {
     if (context.executionMode === "side-question") {
-      return resolveClaudeCliSideQuestionExecutionArgs(context.baseArgs);
+      return resolveClaudeCliSideQuestionExecutionArgs(
+        context.baseArgs,
+        context.useResume && context.forkResume === true,
+      );
     }
     const action = resolveClaudeCliEffortArgAction(context.thinkingLevel, context.modelId);
     switch (action.mode) {
