@@ -270,6 +270,62 @@ export const ChatNativeSubagentGetResultSchema = closedObject({
 });
 export type ChatNativeSubagentGetResult = Static<typeof ChatNativeSubagentGetResultSchema>;
 
+/** Lists the background work of a claude-cli session: subagents and running processes. */
+export const ChatBackgroundWorkGetParamsSchema = closedObject({
+  sessionKey: NonEmptyString,
+  agentId: Type.Optional(NonEmptyString),
+});
+
+export const ChatBackgroundWorkItemSchema = closedObject({
+  id: Type.String({ minLength: 1 }),
+  /** `command`: under the session's claude process; `detached`: started from its workspace. */
+  kind: Type.Union([Type.Literal("subagent"), Type.Literal("command"), Type.Literal("detached")]),
+  status: Type.Union([
+    Type.Literal("running"),
+    Type.Literal("done"),
+    Type.Literal("failed"),
+    Type.Literal("stopped"),
+  ]),
+  title: Type.String(),
+  agentType: Type.Optional(Type.String()),
+  toolCallId: Type.Optional(Type.String()),
+  /** What it is doing now: the leaf command, or the subagent's latest tool call or line. */
+  activity: Type.Optional(Type.String()),
+  activityAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  startedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  lastActivityAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  /** Running with no new process, CPU time or transcript row for `staleAfterMs`. */
+  stale: Type.Boolean(),
+  pid: Type.Optional(Type.Integer({ minimum: 0 })),
+  cpuPercent: Type.Optional(Type.Number({ minimum: 0 })),
+  processCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  nested: Type.Optional(
+    Type.Array(
+      closedObject({
+        pid: Type.Integer({ minimum: 0 }),
+        label: Type.String(),
+        startedAt: Type.Integer({ minimum: 0 }),
+      }),
+      { maxItems: 16 },
+    ),
+  ),
+});
+export type ChatBackgroundWorkItem = Static<typeof ChatBackgroundWorkItemSchema>;
+
+export const ChatBackgroundWorkGetResultSchema = closedObject({
+  /** False when the session is not backed by claude-cli. */
+  available: Type.Boolean(),
+  processScan: Type.Optional(Type.Boolean()),
+  processAlive: Type.Optional(Type.Boolean()),
+  items: Type.Array(ChatBackgroundWorkItemSchema, { maxItems: 64 }),
+  active: Type.Integer({ minimum: 0 }),
+  stale: Type.Integer({ minimum: 0 }),
+  lastActivityAt: Type.Optional(Type.Integer({ minimum: 0 })),
+  staleAfterMs: Type.Integer({ minimum: 0 }),
+  sampledAt: Type.Integer({ minimum: 0 }),
+});
+export type ChatBackgroundWorkGetResult = Static<typeof ChatBackgroundWorkGetResultSchema>;
+
 /** Permissive attachment envelope shared by chat and session entrypoints. */
 export const ChatAttachmentSchema = Type.Object(
   {

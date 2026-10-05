@@ -40,6 +40,10 @@ import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
 import { readSessionFallbackModel } from "../status/session-fallback-model.js";
 import { projectSessionDeliveryFields } from "../utils/delivery-context.shared.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel-constants.js";
+import {
+  resolveClaudeCliSessionIds,
+  summarizeClaudeCliBackgroundWork,
+} from "./cli-background-work.js";
 import { buildControlUiChannelAvatarUrl } from "./control-ui-contract.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import { sessionHasAutomation } from "./session-automation-index.js";
@@ -670,5 +674,12 @@ export function presentSessionRow(
   row.childSessions = children?.length ? children : undefined;
   row.activeModelProvider = options.activeModel?.provider;
   row.activeModel = options.activeModel?.model;
+  const backgroundWork = summarizeClaudeCliBackgroundWork({
+    cliSessionIds: resolveClaudeCliSessionIds(entry, row.key),
+    now,
+  });
+  if (backgroundWork) {
+    row.backgroundWork = backgroundWork;
+  }
   return row;
 }

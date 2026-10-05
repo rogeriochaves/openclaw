@@ -14,15 +14,16 @@ import {
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { loadSessionEntry } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
+import { chatBackgroundWorkHandlers } from "./chat-background-work-handler.js";
 import {
   resolveGlobalAwareNodeChatDeliveryKeys,
   sendGlobalAwareNodeChatPayload,
 } from "./chat-broadcast.js";
 import { chatHistoryHandlers } from "./chat-history-handler.js";
 import { chatMessageGetHandlers } from "./chat-message-get-handler.js";
+import { chatNativeSubagentHandlers } from "./chat-native-subagent-handler.js";
 import { normalizeOptionalChatText as normalizeOptionalText } from "./chat-text-normalization.js";
 import { appendAssistantTranscriptMessage } from "./chat-transcript-persistence.js";
-import { chatNativeSubagentHandlers } from "./chat-native-subagent-handler.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
@@ -44,6 +45,7 @@ export const chatHandlers: GatewayRequestHandlers = {
   ...chatHistoryHandlers,
   ...chatMessageGetHandlers,
   ...chatNativeSubagentHandlers,
+  ...chatBackgroundWorkHandlers,
   "chat.toolTitles": async ({ params, respond }) => {
     if (!assertValidParams(params, validateChatToolTitlesParams, "chat.toolTitles", respond)) {
       return;

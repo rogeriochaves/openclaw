@@ -105,6 +105,20 @@ export const SessionListRowSchema = Type.Object(
     updatedAt: Type.Optional(Type.Number()),
     stateVersion: Type.Optional(Type.Number()),
     abortedLastRun: Type.Optional(Type.Boolean()),
+    backgroundWork: Type.Optional(
+      Type.Object(
+        {
+          active: Type.Number(),
+          stale: Type.Number(),
+          lastActivityAt: Type.Optional(Type.Number()),
+        },
+        {
+          additionalProperties: false,
+          description:
+            "claude-cli work still running outside a turn (background subagents, commands, detached jobs); stale counts items silent for 10+ minutes.",
+        },
+      ),
+    ),
     messages: Type.Optional(Type.Array(Type.Unknown())),
   },
   { additionalProperties: false },
