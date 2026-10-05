@@ -1,6 +1,6 @@
 // Chat-item projection, expansion, reply hydration, and guarded row rendering.
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { nothing } from "lit";
+import { html, nothing } from "lit";
 import { classifySessionKind } from "../../../../../src/sessions/classify-session-kind.js";
 import { markdownGitHubAliasSignature } from "../../../components/markdown-github-repositories.ts";
 import { currentThemeBranding } from "../../../components/neutral-mark.ts";
@@ -78,6 +78,17 @@ import { resolveAssistantDisplayAvatar } from "./chat-welcome.ts";
 import { renderTurnRecapRow } from "./chat-working-indicator.ts";
 
 type ChatRenderItem = ReturnType<typeof coalesceAgentRunFrames>[number];
+
+// claude-cli sessions keep background work running after their turns; the row asks
+// the Gateway and stays empty for other runtimes. Its code loads off the startup path.
+function renderCliBackgroundWork(props: ChatThreadProps) {
+  void import("./chat-cli-background-work.ts");
+  return html`<openclaw-chat-cli-background-work
+    .sessionKey=${props.sessionKey}
+    .agentId=${props.currentAgentId ?? props.fullMessageAgentId}
+    .runWorking=${Boolean(props.runWorking)}
+  ></openclaw-chat-cli-background-work>`;
+}
 
 export function projectChatTranscript(
   props: ChatThreadProps,
@@ -599,6 +610,13 @@ export function projectChatTranscript(
       kind: "content",
       key: "background-tasks",
       content: backgroundTasks,
+    });
+  }
+  if (activeSession && !isEmpty && !showLoadingSkeleton) {
+    transcriptRows.push({
+      kind: "content",
+      key: "cli-background-work",
+      content: renderCliBackgroundWork(props),
     });
   }
   const typingIndicator = renderChatTypingIndicator(props.typingActors, avatarPlacement);

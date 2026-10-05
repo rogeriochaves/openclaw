@@ -151,6 +151,17 @@ export const SessionRowSchema = Type.Object(
     lastActivityAt: Type.Optional(Type.Number()),
     lastInteractionAt: Type.Optional(Type.Number()),
     status: Type.Optional(SessionRunStatusSchema),
+    /**
+     * Work a claude-cli session keeps running outside its turns (background subagents,
+     * commands, detached jobs). Absent when nothing runs.
+     */
+    backgroundWork: Type.Optional(
+      closedObject({
+        active: Type.Integer({ minimum: 0 }),
+        stale: Type.Integer({ minimum: 0 }),
+        lastActivityAt: Type.Optional(Type.Integer({ minimum: 0 })),
+      }),
+    ),
     lastRunError: Type.Optional(Type.String()),
     providerReview: Type.Optional(SessionProviderReviewProjectionSchema),
     /** Exact run that produced the latest terminal lifecycle projection. */

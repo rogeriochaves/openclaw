@@ -512,6 +512,7 @@ export function createSessionsListTool(opts?: {
           ...(totalTokens !== undefined ? { totalTokens } : {}),
           ...(status ? { status } : {}),
           ...(abortedLastRun !== undefined ? { abortedLastRun } : {}),
+          ...(entry.backgroundWork ? { backgroundWork: entry.backgroundWork } : {}),
           ...(childSessions ? { childSessions } : {}),
         };
         if (

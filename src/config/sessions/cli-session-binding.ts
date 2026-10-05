@@ -4,7 +4,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import type { CliSessionBinding, CliSessionReseedReceipt, SessionEntry } from "./types.js";
 
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
-type CliSessionBindingEntry = Pick<SessionEntry, "cliSessionBindings" | "cliSessionIds">;
+export type CliSessionBindingEntry = Pick<SessionEntry, "cliSessionBindings" | "cliSessionIds">;
 
 export function normalizeCliSessionReseedReceipt(
   value: CliSessionReseedReceipt | undefined,

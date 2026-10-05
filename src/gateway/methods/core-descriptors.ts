@@ -714,4 +714,5 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["users.unlinkChannelIdentity", "users", "operator.admin", "2026.9"],
   ["users.listChannelIdentities", "users", "operator.admin", "2026.9"],
   ["chat.nativeSubagent.get", "chat", "operator.read", "2026.9"],
+  ["chat.backgroundWork.get", "chat", "operator.read", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

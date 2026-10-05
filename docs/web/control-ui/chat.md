@@ -678,6 +678,26 @@ It applies the same transcript redaction and per-field caps (4,000 characters by
 default) as chat history. Subagent transcripts over 8 MB start at their most
 recent activity. Other runtimes do not show the section.
 
+### Claude Code background work
+
+A `claude-cli` session can keep working after its turn ends: background subagents,
+long commands and the pipelines they start (including nested `claude -p` calls),
+and jobs detached with `setsid` or `systemd-run` from the agent's workspace. When
+any of that runs, a status line above the composer says how many tasks run and when
+the last activity was, for example "2 background tasks running · last activity 40s
+ago". Click it to list each task: what it is, when it started, what it is doing now
+(the subagent's latest tool call or line, or the command a process tree is waiting
+on), CPU use and nested `claude` calls. A task with no new process, CPU time or
+transcript row for 10 minutes is marked as quiet and may be stuck. Finished
+subagents stay listed for 15 minutes with how they ended.
+
+The Gateway builds the list through `chat.backgroundWork.get` from the Claude Code
+subagent transcripts and task notifications and, on Linux, from `/proc`: the
+children of the session's `claude` process and detached process trees whose command
+line or working directory is inside that process's working directory. Command text
+goes through the same redaction as tool details. Session list rows (and
+`sessions_list`) carry a `backgroundWork` count of running and quiet tasks.
+
 ## Conversations stopped for review
 
 When a provider stops a conversation as a misalignment precaution, chat holds
