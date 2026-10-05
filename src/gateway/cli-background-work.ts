@@ -241,8 +241,11 @@ function describeProcessTree(params: {
   root: ProcInfo;
   kind: "command" | "detached";
   now: number;
+  /** Paths under it read relative, as the agent wrote them. */
+  workspaceDir?: string;
 }): ClaudeCliBackgroundItem {
-  const { snapshot, root } = params;
+  const { snapshot, root, workspaceDir } = params;
+  const show = (text: string) => (workspaceDir ? text.replaceAll(`${workspaceDir}/`, "") : text);
   const tree = [root, ...listDescendants(snapshot, root.pid)];
   const leaf = findLeafProcess(snapshot, root);
   let lastActivityAt = 0;
@@ -255,12 +258,13 @@ function describeProcessTree(params: {
     );
     cpuPercent += snapshot.cpuPercent.get(info.pid) ?? 0;
   }
+  // The leaf already shows as the activity.
   const nested = tree
-    .filter((info) => info !== root && isClaudeProcess(info))
+    .filter((info) => info !== root && info !== leaf && isClaudeProcess(info))
     .slice(0, MAX_NESTED)
     .map((info) => ({
       pid: info.pid,
-      label: describeNestedClaude(info),
+      label: show(describeNestedClaude(info)),
       startedAt: info.startedAt,
     }));
   const stale = params.now - lastActivityAt >= CLI_BACKGROUND_STALE_AFTER_MS;
@@ -268,10 +272,10 @@ function describeProcessTree(params: {
     id: `${params.kind}:${root.pid}:${root.startTicks}`,
     kind: params.kind,
     status: "running",
-    title: describeArgv(root),
+    title: show(describeArgv(root)),
     ...(leaf !== root
       ? {
-          activity: isClaudeProcess(leaf) ? describeNestedClaude(leaf) : describeArgv(leaf),
+          activity: show(isClaudeProcess(leaf) ? describeNestedClaude(leaf) : describeArgv(leaf)),
           activityAt: leaf.startedAt,
         }
       : {}),
@@ -290,11 +294,12 @@ function listCommandItems(
   claude: ProcInfo,
   now: number,
 ): ClaudeCliBackgroundItem[] {
+  const workspaceDir = workspaceDirOf(snapshot, claude);
   // Bash tool calls run as `bash -c` children; MCP servers and helpers are not task work.
   return (snapshot.children.get(claude.pid) ?? []).flatMap((pid) => {
     const info = snapshot.byPid.get(pid);
     return info && isShellCommand(info) && info.state !== "Z"
-      ? [describeProcessTree({ snapshot, root: info, kind: "command", now })]
+      ? [describeProcessTree({ snapshot, root: info, kind: "command", now, workspaceDir })]
       : [];
   });
 }
@@ -323,14 +328,14 @@ function listDetachedItems(
     ) {
       continue;
     }
-    const matches =
-      workspaceDirs.some((dir) => mentionsDir(info.argv, dir)) ||
-      workspaceDirs.some((dir) => within(dir, snapshot.readCwd(info.pid)));
+    const workspaceDir =
+      workspaceDirs.find((dir) => mentionsDir(info.argv, dir)) ??
+      workspaceDirs.find((dir) => within(dir, snapshot.readCwd(info.pid)));
     // Gateways and agent hosts run claude sessions themselves; they are not task work.
-    if (!matches || listDescendants(snapshot, info.pid).some(isClaudeSessionHost(snapshot))) {
+    if (!workspaceDir || listDescendants(snapshot, info.pid).some(isClaudeSessionHost(snapshot))) {
       continue;
     }
-    items.push(describeProcessTree({ snapshot, root: info, kind: "detached", now }));
+    items.push(describeProcessTree({ snapshot, root: info, kind: "detached", now, workspaceDir }));
   }
   return items;
 }
