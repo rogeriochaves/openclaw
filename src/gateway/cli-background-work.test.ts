@@ -305,6 +305,33 @@ describe("collectClaudeCliBackgroundWork", () => {
       activity: "claude (claude-sonnet-5): Rewrite this draft in plain English",
       activityAt: NOW - 2 * MINUTE,
       processCount: 3,
+    });
+    // The leaf claude call is the activity, not repeated as a nested call.
+    expect(work.items[1]?.nested).toBeUndefined();
+    expect(work.items[3]).toMatchObject({
+      kind: "detached",
+      title: "bash tmp/loop.sh",
+      activity: "sleep 600",
+    });
+    expect(work).toMatchObject({ active: 4, stale: 2, lastActivityAt: NOW - MINUTE });
+  });
+
+  it("lists a nested claude call apart from the command it is waiting on", () => {
+    useTable([
+      ...baseTable,
+      {
+        pid: 303,
+        ppid: 302,
+        comm: "rg",
+        argv: ["rg", "ERROR", `${WORKSPACE}/logs`],
+        startedAt: NOW - MINUTE,
+      },
+    ]);
+
+    const work = collectClaudeCliBackgroundWork({ cliSessionIds: [SESSION_ID], now: NOW });
+
+    expect(work.items.find((item) => item.kind === "command")).toMatchObject({
+      activity: "rg ERROR logs",
       nested: [
         {
           pid: 302,
@@ -313,12 +340,6 @@ describe("collectClaudeCliBackgroundWork", () => {
         },
       ],
     });
-    expect(work.items[3]).toMatchObject({
-      kind: "detached",
-      title: `bash ${WORKSPACE}/tmp/loop.sh`,
-      activity: "sleep 600",
-    });
-    expect(work).toMatchObject({ active: 4, stale: 2, lastActivityAt: NOW - MINUTE });
   });
 
   it("counts a process tree as active again once it uses CPU", async () => {
