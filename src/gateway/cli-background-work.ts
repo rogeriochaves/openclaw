@@ -457,6 +457,14 @@ export function summarizeClaudeCliBackgroundWork(params: {
   if (cached && now - cached.at < SUMMARY_TTL_MS && now >= cached.at) {
     return cached.summary;
   }
+  // Everything that can run lives in or under the claude process: without it, skip the files.
+  const snapshot = deps.sample(now);
+  const index = snapshot ? claudeProcessesBySessionId(snapshot) : undefined;
+  if (index && !params.cliSessionIds.some((id) => index.has(id))) {
+    summaryCache.set(key, { at: now, summary: undefined });
+    boundCache(summaryCache, 256);
+    return undefined;
+  }
   const work = collectClaudeCliBackgroundWork({ cliSessionIds: params.cliSessionIds, now });
   const summary =
     work.active > 0
