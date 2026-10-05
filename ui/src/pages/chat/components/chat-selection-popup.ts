@@ -25,6 +25,9 @@ let activeSelectionPopup: {
   paneId: string;
 } | null = null;
 let selectionPopupTimer: { timer: number; paneId: string } | null = null;
+// Touch browsers (iOS Safari) can keep the selection after a tap outside the
+// toolbar, so the tap's pointerup would show the toolbar again for the same range.
+let touchDismissedSelection: { paneId: string; range: Range } | null = null;
 
 export function removeChatSelectionPopup(paneId?: string) {
   if (selectionPopupTimer && (paneId === undefined || selectionPopupTimer.paneId === paneId)) {
@@ -79,6 +82,18 @@ function selectionWithinChatBubble(
   };
 }
 
+function sameRange(a: Range, b: Range): boolean {
+  try {
+    return (
+      a.compareBoundaryPoints(Range.START_TO_START, b) === 0 &&
+      a.compareBoundaryPoints(Range.END_TO_END, b) === 0
+    );
+  } catch {
+    // Ranges in different documents or detached trees are not the same selection.
+    return false;
+  }
+}
+
 function positionPopup(popup: HTMLElement, anchor: DOMRect) {
   const viewport = window.visualViewport;
   const minLeft = (viewport?.offsetLeft ?? 0) + 8;
@@ -104,6 +119,7 @@ function mountPopup(
   paneId: string,
   onEscape?: () => void,
   anchorElement?: HTMLElement,
+  onOutsidePointerDown?: (event: PointerEvent) => void,
 ) {
   removeChatSelectionPopup();
   document.body.appendChild(popup);
@@ -116,6 +132,7 @@ function mountPopup(
     "pointerdown",
     (event) => {
       if (!popup.contains(event.target as Node | null)) {
+        onOutsidePointerDown?.(event);
         removeChatSelectionPopup();
       }
     },
@@ -182,7 +199,13 @@ function showChatSelectionPopup(
       activate(() => actions.onAskSideChat(selection.text)),
     ),
   );
-  const signal = mountPopup(popup, anchor, actions.paneId);
+  const signal = mountPopup(popup, anchor, actions.paneId, undefined, undefined, (event) => {
+    const current = window.getSelection();
+    touchDismissedSelection =
+      event.pointerType !== "mouse" && current && !current.isCollapsed && current.rangeCount === 1
+        ? { paneId: actions.paneId, range: current.getRangeAt(0).cloneRange() }
+        : null;
+  });
   document.addEventListener(
     "selectionchange",
     () => {
@@ -329,11 +352,23 @@ export function handleChatSelectionPointerUp(
     return;
   }
   removeChatSelectionPopup();
+  const dismissed =
+    touchDismissedSelection?.paneId === actions.paneId ? touchDismissedSelection : null;
+  touchDismissedSelection = null;
   selectionPopupTimer = {
     paneId: actions.paneId,
     timer: window.setTimeout(() => {
       selectionPopupTimer = null;
       const selection = window.getSelection();
+      if (
+        dismissed &&
+        selection?.rangeCount === 1 &&
+        sameRange(selection.getRangeAt(0), dismissed.range)
+      ) {
+        // A tap outside the toolbar dismisses the selection with it.
+        selection.removeAllRanges();
+        return;
+      }
       const source = selection ? selectionWithinChatBubble(selection, threadRoot) : null;
       if (source && selection && threadRoot.isConnected) {
         showChatSelectionPopup(selection.getRangeAt(0).getBoundingClientRect(), source, actions);
