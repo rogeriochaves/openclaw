@@ -32,6 +32,7 @@ import {
   renderStartExecutionButton,
   renderStopCardAction,
 } from "./view-card-actions.ts";
+import { renderImageAttachmentPreview, renderImageAttachments } from "./view-card-attachments.ts";
 import {
   renderDependencyDetailList,
   renderDetailRow,
@@ -560,6 +561,7 @@ export function renderCardDetailsPanel(props: WorkboardProps) {
                       : nothing
                   }
                   ${renderDependencyDetailList(dependencies)}
+                  ${renderImageAttachments(props, state, card)}
                 </div>
               </div>
             </section>
@@ -681,7 +683,7 @@ export function renderCardDetailsPanel(props: WorkboardProps) {
     `,
   );
   return html`
-    ${detailsDialog}
+    ${detailsDialog} ${renderImageAttachmentPreview(props, state, card)}
     ${
       inlineDiscardOpen.has(state)
         ? renderCardDiscardDialog({
