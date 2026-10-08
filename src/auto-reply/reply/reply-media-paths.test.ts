@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { collectReplyMediaEntries } from "../../infra/outbound/reply-media-entries.js";
 import { HostReadMediaTypeError, LocalMediaAccessError } from "../../media/local-media-access.js";
+import { MediaLimitError } from "../../media/media-limit-error.js";
 import { captureEnv, setTestEnvValue } from "../../test-utils/env.js";
 import {
   getReplyPayloadMetadata,
@@ -536,6 +537,18 @@ describe("createReplyMediaPathNormalizer", () => {
     });
 
     expectNoMedia(result);
+  });
+
+  it("names the size limit when reply media is over the channel byte cap", async () => {
+    resolveOutboundAttachmentFromUrl.mockRejectedValueOnce(
+      new MediaLimitError("Media exceeds 5MB limit (got 12.76MB)"),
+    );
+    const result = await createTestReplyMediaNormalizer()({ mediaUrls: ["./out/pack.zip"] });
+
+    expectNoMedia(result);
+    expect(result.text).toBe(
+      "⚠️ pack.zip: Too large to send. Send a smaller file or raise mediaMaxMb in the config.",
+    );
   });
 
   it("keeps reply text and appends a named receipt when all reply media is dropped", async () => {

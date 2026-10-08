@@ -364,7 +364,7 @@ export type MessageContentItem =
   | {
       type: "attachment_error";
       attachment: {
-        code: "file-not-found" | "unsupported-format" | "delivery-failed";
+        code: "file-not-found" | "unsupported-format" | "too-large" | "delivery-failed";
         kind: Exclude<MediaKind, "sticker" | "unknown">;
         label: string;
         mimeType?: string;

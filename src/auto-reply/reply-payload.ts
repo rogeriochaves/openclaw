@@ -20,7 +20,11 @@ export type {
   ReplyPayloadTtsSupplement,
 } from "../shared/reply-payload.types.js";
 
-export type ReplyMediaFailureCode = "file-not-found" | "unsupported-format" | "delivery-failed";
+export type ReplyMediaFailureCode =
+  | "file-not-found"
+  | "unsupported-format"
+  | "too-large"
+  | "delivery-failed";
 
 /** Adds the BTW question banner for channels that only accept plain text bodies. */
 export function formatBtwTextForExternalDelivery(payload: ReplyPayload): string | undefined {
@@ -107,6 +111,7 @@ export type ReplyDeliveryContext = {
 const REPLY_MEDIA_FAILURE_MESSAGES: Record<ReplyMediaFailureCode, string> = {
   "file-not-found": "File not found. Check the path and try again.",
   "unsupported-format": "Rejected by the local attachment allowlist. Send a supported file type.",
+  "too-large": "Too large to send. Send a smaller file or raise mediaMaxMb in the config.",
   "delivery-failed": "Delivery failed. Try sending this file again.",
 };
 

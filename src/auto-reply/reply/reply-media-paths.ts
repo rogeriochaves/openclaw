@@ -1,6 +1,6 @@
 // Resolves media paths from reply payloads into runtime attachment metadata.
 import path from "node:path";
-import { mediaKindFromMime } from "@openclaw/media-core/constants";
+import { maxBytesForKind, mediaKindFromMime } from "@openclaw/media-core/constants";
 import { basenameFromAnyPath } from "@openclaw/media-core/file-name";
 import { isPassThroughRemoteMediaSource } from "@openclaw/media-core/media-source-url";
 import { mimeTypeFromFilePath } from "@openclaw/media-core/mime";
@@ -27,6 +27,7 @@ import { collectReplyMediaEntries } from "../../infra/outbound/reply-media-entri
 import { resolveOutboundMediaMaxBytes } from "../../media/configured-max-bytes.js";
 import type { OutboundMediaAccess } from "../../media/load-options.js";
 import { HostReadMediaTypeError, LocalMediaAccessError } from "../../media/local-media-access.js";
+import { MediaLimitError } from "../../media/media-limit-error.js";
 import { normalizeMediaReferenceForComparison } from "../../media/media-reference-comparison.js";
 import { resolveOutboundAttachmentFromUrl } from "../../media/outbound-attachment.js";
 import { resolveAgentScopedOutboundMediaAccess } from "../../media/read-capability.js";
@@ -84,6 +85,12 @@ function resolveReplyMediaFailureCode(error: unknown): ReplyMediaFailure["code"]
     ) {
       return "unsupported-format";
     }
+    if (
+      current instanceof MediaLimitError ||
+      (current instanceof FsSafeError && current.code === "too-large")
+    ) {
+      return "too-large";
+    }
     current = current.cause;
   }
   return "delivery-failed";
@@ -138,6 +145,8 @@ export function createReplyMediaSourcePreparer(params: {
   sessionWorkspaceDir?: string;
   workspaceOnly?: boolean;
   allowHostWorkspace?: boolean;
+  /** WebChat serves staged files from local state, so each kind keeps at least its default cap. */
+  webchatDisplay?: boolean;
   messageProvider?: string;
   accountId?: string;
   groupId?: string;
@@ -254,7 +263,11 @@ export function createReplyMediaSourcePreparer(params: {
     if (cached) {
       return await cached;
     }
-    const persistPromise = resolveOutboundAttachmentFromUrl(media, maxBytes, {
+    const kind = mediaKindFromMime(mimeTypeFromFilePath(media)) ?? "document";
+    const stagingMaxBytes = params.webchatDisplay
+      ? Math.max(maxBytes, maxBytesForKind(kind))
+      : maxBytes;
+    const persistPromise = resolveOutboundAttachmentFromUrl(media, stagingMaxBytes, {
       mediaAccess: resolveMediaAccessForSource(media, sessionWorkspaceDir, workspaceDir),
     })
       .then((saved) => ({

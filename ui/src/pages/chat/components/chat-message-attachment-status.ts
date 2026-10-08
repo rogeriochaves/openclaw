@@ -3,14 +3,16 @@ import { icons } from "../../../components/icons.ts";
 import { t } from "../../../i18n/index.ts";
 import { renderAttachmentCardIcon } from "./chat-attachment-card.ts";
 
-type AttachmentFailureCode = "file-not-found" | "unsupported-format" | "delivery-failed";
+type AttachmentFailureCode = "file-not-found" | "unsupported-format" | "too-large" | "delivery-failed";
 
 export function attachmentFailureReason(code: AttachmentFailureCode): string {
   return code === "file-not-found"
     ? t("chat.attachments.failureFileNotFound")
     : code === "unsupported-format"
       ? t("chat.attachments.failureUnsupportedFormat")
-      : t("chat.attachments.failureDeliveryFailed");
+      : code === "too-large"
+        ? t("chat.attachments.failureTooLarge")
+        : t("chat.attachments.failureDeliveryFailed");
 }
 
 export function renderAssistantAttachmentStatusCard(params: {

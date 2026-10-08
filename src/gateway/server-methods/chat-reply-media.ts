@@ -282,6 +282,7 @@ export async function normalizeWebchatReplyMediaPathsForDisplay(
       sessionWorkspaceDir: workspaceOnly && !remote ? workspaceDir : undefined,
       workspaceOnly,
       allowHostWorkspace: !remote,
+      webchatDisplay: true,
       accountId: params.accountId,
       ...resolveRequesterPolicyContext(params.requesterContext),
     });

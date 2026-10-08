@@ -20,6 +20,7 @@ export function normalizeAttachmentContentBlock(value: unknown): MessageContentI
     if (
       attachment.code !== "file-not-found" &&
       attachment.code !== "unsupported-format" &&
+      attachment.code !== "too-large" &&
       attachment.code !== "delivery-failed"
     ) {
       return [];
