@@ -99,6 +99,10 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 
 - `cron.webhookToken`
 
+#### `diagnostics`
+
+- `diagnostics.otel.headers.*`
+
 #### `gateway`
 
 - `gateway.auth.password`

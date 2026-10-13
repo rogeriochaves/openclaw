@@ -172,6 +172,17 @@ const CORE_SECRET_TARGET_REGISTRY: SecretTargetRegistryEntry[] = [
     includeInAudit: true,
   },
   {
+    id: "diagnostics.otel.headers.*",
+    targetType: "diagnostics.otel.headers.*",
+    configFile: "openclaw.json",
+    pathPattern: "diagnostics.otel.headers.*",
+    secretShape: SECRET_INPUT_SHAPE,
+    expectedResolvedValue: "string",
+    includeInPlan: true,
+    includeInConfigure: true,
+    includeInAudit: true,
+  },
+  {
     id: "gateway.auth.token",
     targetType: "gateway.auth.token",
     configFile: "openclaw.json",

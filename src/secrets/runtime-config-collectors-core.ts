@@ -570,6 +570,39 @@ function collectCronAssignments(params: {
   });
 }
 
+function collectDiagnosticsOtelAssignments(params: {
+  config: OpenClawConfig;
+  defaults: SecretDefaults | undefined;
+  context: ResolverContext;
+}): void {
+  const otel = params.config.diagnostics?.otel as Record<string, unknown> | undefined;
+  if (!isRecord(otel) || !isRecord(otel.headers)) {
+    return;
+  }
+  const headers = otel.headers;
+  for (const headerKey of Object.keys(headers)) {
+    collectRuntimeSecretInputAssignment({
+      value: headers[headerKey],
+      path: appendConfigPathSegment("diagnostics.otel.headers", headerKey),
+      expected: "string",
+      defaults: params.defaults,
+      context: params.context,
+      active: otel.enabled === true,
+      inactiveReason: "diagnostics.otel is disabled.",
+      owner: {
+        ownerKind: "capability",
+        ownerId: "diagnostics-otel",
+        requiredForGateway: false,
+        disposition: "isolate",
+        contract: otel,
+      },
+      apply: (value) => {
+        headers[headerKey] = value;
+      },
+    });
+  }
+}
+
 /** Collects SecretRef assignments from core non-plugin config surfaces. */
 export function collectCoreConfigAssignments(params: {
   config: OpenClawConfig;
@@ -602,5 +635,6 @@ export function collectCoreConfigAssignments(params: {
   collectMessagesTtsAssignments(params);
   collectAgentTtsAssignments(params);
   collectCronAssignments(params);
+  collectDiagnosticsOtelAssignments(params);
   collectMediaRequestAssignments(params);
 }
