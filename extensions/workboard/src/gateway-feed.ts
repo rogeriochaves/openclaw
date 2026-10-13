@@ -8,6 +8,7 @@ import {
   buildFeedCommentMessage,
   findFeedAction,
   resolveFeedNotifySession,
+  resolveOwnerDraft,
   resolveWorkboardFeedConfig,
   routeFeedMessage,
   selectFeedCards,
@@ -70,9 +71,7 @@ export function registerWorkboardFeedGatewayMethods(params: {
           throw new Error("draft must be a string or null.");
         }
         return {
-          card: redactClaimToken(
-            await store.updateFeed(id, { draft: draft === "" ? null : draft }),
-          ),
+          card: redactClaimToken(await store.setOwnerFeedDraft(id, draft)),
         };
       },
     ],
@@ -94,11 +93,8 @@ export function registerWorkboardFeedGatewayMethods(params: {
         if (!action) {
           throw new Error(`card ${card.id} has no feed action ${String(requestParams.actionId)}.`);
         }
-        const draft = readOptionalText(requestParams, "draft");
-        const editedDraft =
-          draft !== undefined && draft.trim() && draft !== card.metadata?.feed?.draft
-            ? draft
-            : undefined;
+        const draft = resolveOwnerDraft(card, readOptionalText(requestParams, "draft"));
+        const editedDraft = draft.edited;
         // Route before acking: a failed send leaves the card open for another try.
         const routed = await routeFeedMessage({
           gateway,
@@ -109,7 +105,7 @@ export function registerWorkboardFeedGatewayMethods(params: {
         const acked = await store.ackFeed(card.id, {
           acked: true,
           actionId: action.id,
-          ...(editedDraft !== undefined ? { draft: editedDraft } : {}),
+          ...(draft.changed && editedDraft !== undefined ? { draft: editedDraft } : {}),
         });
         return { card: redactClaimToken(acked), routed };
       },
@@ -123,12 +119,16 @@ export function registerWorkboardFeedGatewayMethods(params: {
         if (!body) {
           throw new Error("comment body is required.");
         }
+        const draft = resolveOwnerDraft(card, readOptionalText(requestParams, "draft"));
         const routed = await routeFeedMessage({
           gateway,
           sessionKey: resolveFeedNotifySession(card),
-          message: buildFeedCommentMessage({ card, body, config }),
+          message: buildFeedCommentMessage({ card, body, config, editedDraft: draft.edited }),
           idempotencyKey: readIdempotencyKey(requestParams, `workboard-feed:${randomUUID()}`),
         });
+        if (draft.changed && draft.edited !== undefined) {
+          await store.setOwnerFeedDraft(card.id, draft.edited);
+        }
         const commented = await store.addComment(card.id, {
           body,
           author: { kind: "owner" },

@@ -980,6 +980,21 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     });
   }
 
+  /** Save the owner's edit of the Feed draft; it travels with the next click or comment. */
+  async setOwnerFeedDraft(id: string, draft: string | null): Promise<WorkboardCard> {
+    return await this.updateMetadata(id, (existing) => {
+      const feed = { ...existing.metadata?.feed };
+      if (draft === null || !draft.trim()) {
+        delete feed.draft;
+        delete feed.draftEdited;
+      } else {
+        feed.draft = draft;
+        feed.draftEdited = true;
+      }
+      return { ...existing.metadata, feed };
+    });
+  }
+
   /** Record (or undo) the owner's Feed ack. Acking never changes the card's status. */
   async ackFeed(
     id: string,
@@ -990,6 +1005,7 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
       const feed = { ...existing.metadata?.feed };
       if (input.draft !== undefined) {
         feed.draft = input.draft;
+        feed.draftEdited = true;
       }
       if (input.acked) {
         feed.ackedAt = now;

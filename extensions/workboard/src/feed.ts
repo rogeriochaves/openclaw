@@ -64,6 +64,29 @@ function replyInstructions(card: WorkboardCard): string {
   ].join(" ");
 }
 
+/**
+ * The draft text to send with an owner decision. `changed` is a new edit from this request;
+ * otherwise a draft the owner saved earlier still counts as edited.
+ */
+export function resolveOwnerDraft(
+  card: WorkboardCard,
+  draft: string | undefined,
+): { edited?: string; changed: boolean } {
+  const feed = card.metadata?.feed;
+  if (draft !== undefined && draft.trim() && draft !== feed?.draft) {
+    return { edited: draft, changed: true };
+  }
+  return feed?.draftEdited && feed.draft
+    ? { edited: feed.draft, changed: false }
+    : { changed: false };
+}
+
+function editedDraftLines(editedDraft: string | undefined): string[] {
+  return editedDraft === undefined
+    ? []
+    : ["", "They edited the draft first. Use this text:", quoteBlock(editedDraft)];
+}
+
 export function buildFeedActionMessage(params: {
   card: WorkboardCard;
   action: WorkboardFeedAction;
@@ -71,27 +94,26 @@ export function buildFeedActionMessage(params: {
   editedDraft?: string;
 }): string {
   const { card, action, config } = params;
-  const lines = [
+  return [
     `${FEED_MESSAGE_PREFIX} ${ownerLabel(config)} clicked "${action.label}" on card ${card.id} "${card.title}".`,
     "",
     action.message,
-  ];
-  if (params.editedDraft !== undefined) {
-    lines.push("", "They edited the draft first. Use this text:", quoteBlock(params.editedDraft));
-  }
-  lines.push("", replyInstructions(card));
-  return lines.join("\n");
+    ...editedDraftLines(params.editedDraft),
+    "",
+    replyInstructions(card),
+  ].join("\n");
 }
 
 export function buildFeedCommentMessage(params: {
   card: WorkboardCard;
   body: string;
   config: WorkboardFeedConfig;
+  editedDraft?: string;
 }): string {
   const { card, body, config } = params;
   return [
-    `${FEED_MESSAGE_PREFIX} ${ownerLabel(config)} commented on card ${card.id} "${card.title}":`,
-    quoteBlock(body),
+    `${FEED_MESSAGE_PREFIX} ${ownerLabel(config)} commented on card ${card.id} "${card.title}": ${body}`,
+    ...editedDraftLines(params.editedDraft),
     "",
     replyInstructions(card),
   ].join("\n");

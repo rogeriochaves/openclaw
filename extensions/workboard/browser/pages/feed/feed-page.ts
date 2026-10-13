@@ -228,7 +228,8 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       state.error = undefined;
       requestUpdate();
       try {
-        await feed.comment(item.card.id, body);
+        await feed.comment(item.card.id, body, state.editing ? state.draftText : undefined);
+        state.editing = false;
         state.commentText = "";
         state.commentOpen = false;
         state.confirmedLabel = t("feed.replied");
@@ -454,8 +455,13 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
           aria-label=${t("feed.replyPlaceholder", { agent })}
           .value=${state.commentText}
           @input=${(event: Event) => {
+            const wasEmpty = !state.commentText.trim();
             state.commentText = (event.target as HTMLTextAreaElement).value;
             autosize(event);
+            // Send is enabled only with text; re-render when that flips.
+            if (wasEmpty !== !state.commentText.trim()) {
+              requestUpdate();
+            }
           }}
           @keydown=${(event: KeyboardEvent) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -551,8 +557,8 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
               ? html`<span class="wb-feed-card__urgent">${t("feed.urgent")}</span>`
               : nothing
           }
-          <time class="wb-feed-card__time" datetime=${new Date(item.card.createdAt).toISOString()}
-            >${formatTime(item.card.createdAt, now)}</time
+          <time class="wb-feed-card__time" datetime=${new Date(item.sortAt).toISOString()}
+            >${formatTime(item.sortAt, now)}</time
           >
         </header>
         <h2 class="wb-feed-card__title">${item.title}</h2>

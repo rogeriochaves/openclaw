@@ -20,7 +20,7 @@ export type FeedStore = {
   refresh: () => Promise<void>;
   act: (id: string, actionId: string, draft?: string) => Promise<void>;
   ack: (id: string, acked: boolean) => Promise<void>;
-  comment: (id: string, body: string) => Promise<void>;
+  comment: (id: string, body: string, draft?: string) => Promise<void>;
   saveDraft: (id: string, draft: string) => Promise<void>;
   dispose: () => void;
 };
@@ -145,10 +145,11 @@ export function createFeedStore(host: ControlUiHost): FeedStore {
         idempotencyKey: `workboard-feed:${id}:${actionId}:${Date.now()}`,
       }),
     ack: (id, acked) => mutate("workboard.feed.ack", { id, acked }),
-    comment: (id, body) =>
+    comment: (id, body, draft) =>
       mutate("workboard.feed.comment", {
         id,
         body,
+        ...(draft !== undefined ? { draft } : {}),
         idempotencyKey: `workboard-feed:${id}:comment:${Date.now()}`,
       }),
     saveDraft: (id, draft) => mutate("workboard.feed.update", { id, draft }),

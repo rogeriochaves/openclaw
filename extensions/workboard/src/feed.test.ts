@@ -172,9 +172,9 @@ describe("workboard feed", () => {
     const [, params] = gateway.request.mock.calls[0] as unknown as [string, Record<string, string>];
     expect(params.key).toBe("agent:events:main");
     expect(params.message).toContain(
-      `[Feed] Sam commented on card ${card.id} "Pick the conference":`,
+      `[Feed] Sam commented on card ${card.id} "Pick the conference": Only if the booth is under 5k.`,
     );
-    expect(params.message).toContain("> Only if the booth is under 5k.");
+    expect(params.message).not.toContain("edited the draft");
     const acked = await store.get(card.id);
     const ackedAt = acked?.metadata?.feed?.ackedAt;
     expect(ackedAt).toEqual(expect.any(Number));
@@ -222,5 +222,36 @@ describe("workboard feed", () => {
     const listed = await call("workboard.feed.list", {});
     expect(listed).toMatchObject({ boards: ["owner"], ownerName: "Sam" });
     expect((listed.cards as unknown[]).length).toBe(1);
+  });
+
+  it("sends a saved draft edit with the next click or comment until the agent replaces it", async () => {
+    const { store, gateway, call } = setup();
+    const card = await store.create({
+      title: "Dana is waiting on the Q3 proposal",
+      metadata: { feed: { ...emailFeed, notify: "agent:email:main" } },
+    });
+    await call("workboard.feed.update", { id: card.id, draft: "Hi Dana, short version." });
+    await call("workboard.feed.comment", { id: card.id, body: "Also cc Lee." });
+    await call("workboard.feed.act", { id: card.id, actionId: "send" });
+    const messages = gateway.request.mock.calls.map(
+      (entry) => (entry as unknown as [string, Record<string, string>])[1].message,
+    );
+    for (const message of messages) {
+      expect(message).toContain(
+        "They edited the draft first. Use this text:\n> Hi Dana, short version.",
+      );
+    }
+    // A new agent draft replaces the owner's edit, so the next click sends no override.
+    const tool = toolsFor(store, "email");
+    await tool("workboard_feed").execute("call-5", {
+      id: card.id,
+      draft: "Hi Dana, v2.",
+      reopen: true,
+    });
+    expect((await store.get(card.id))?.metadata?.feed?.draftEdited).toBeUndefined();
+    await call("workboard.feed.act", { id: card.id, actionId: "send" });
+    expect(
+      (gateway.request.mock.calls.at(-1) as unknown as [string, Record<string, string>])[1].message,
+    ).not.toContain("edited the draft");
   });
 });
