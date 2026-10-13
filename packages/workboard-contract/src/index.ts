@@ -186,6 +186,8 @@ export type WorkboardFeed = {
   body?: string;
   draft?: string;
   draftHeader?: string;
+  /** The owner edited the draft after the agent last set it. */
+  draftEdited?: boolean;
   metric?: WorkboardFeedMetric;
   links?: WorkboardFeedLink[];
   actions?: WorkboardFeedAction[];

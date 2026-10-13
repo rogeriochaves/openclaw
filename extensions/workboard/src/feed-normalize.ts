@@ -162,6 +162,7 @@ export function normalizeFeed(value: unknown): WorkboardFeed | undefined {
     ...(metric ? { metric } : {}),
     ...(links ? { links } : {}),
     ...(actions ? { actions } : {}),
+    ...(feed.draft && value.draftEdited === true ? { draftEdited: true } : {}),
     ...(ackedAt ? { ackedAt } : {}),
     ...(ackedAction ? { ackedAction: ackedAction.slice(0, 40) } : {}),
   };
@@ -198,8 +199,12 @@ export function mergeFeedPatch(
   }
   const next: Record<string, unknown> = { ...existing };
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "reopen" || key === "ackedAt" || key === "ackedAction") {
+    if (key === "reopen" || key === "ackedAt" || key === "ackedAction" || key === "draftEdited") {
       continue;
+    }
+    if (key === "draft") {
+      // A new agent draft replaces the owner's edit.
+      delete next.draftEdited;
     }
     if (value === null) {
       delete next[key];
