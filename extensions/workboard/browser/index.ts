@@ -2,15 +2,19 @@ import { defineControlUiPlugin } from "openclaw/plugin-sdk/control-ui";
 import { createWorkboardClient } from "./api/gateway.ts";
 import { createWorkboardCatalogRuntime } from "./catalog.ts";
 import { bindWorkboardHost } from "./host.ts";
+import { t } from "./i18n/index.ts";
+import { createFeedStore } from "./lib/feed/feed-store.ts";
 import { workboardBoardLabel } from "./lib/workboard/board-presentation.ts";
 import { createWorkboardCapability } from "./lib/workboard/capability.ts";
 import { WORKBOARD_CHANGED_EVENT } from "./lib/workboard/types.ts";
+import { createFeedPage, FEED_PAGE_ID } from "./pages/feed/feed-page.ts";
 import { createWorkboardPage, workboardPageTarget } from "./pages/workboard/workboard-page.ts";
 import { createWorkboardSessionAccessory } from "./session-accessory.ts";
 import { createWorkboardWidget } from "./widgets.ts";
 import "./styles/workboard.css";
 import "./styles/widgets.css";
 import "./styles/session-chip.css";
+import "./styles/feed.css";
 
 export default defineControlUiPlugin({
   id: "workboard",
@@ -18,6 +22,7 @@ export default defineControlUiPlugin({
     const unbind = bindWorkboardHost(host);
     const workboard = createWorkboardCapability();
     const client = createWorkboardClient(host);
+    const feed = createFeedStore(host);
     const navigation = new Map<string, { signature: string; dispose: () => void }>();
     const catalog = createWorkboardCatalogRuntime(({ boards }) => {
       const currentIds = new Set(boards.map((board) => board.id));
@@ -53,6 +58,23 @@ export default defineControlUiPlugin({
         label: "Workboard",
         mount: createWorkboardPage(workboard),
       }),
+      host.ui.registerPage({
+        id: FEED_PAGE_ID,
+        label: t("feed.title"),
+        mount: createFeedPage(feed),
+      }),
+      host.ui.registerNavigation({
+        id: FEED_PAGE_ID,
+        label: t("feed.title"),
+        page: { id: FEED_PAGE_ID },
+        icon: "inbox",
+        order: 5,
+        get badge() {
+          const count = feed.openCount();
+          return count > 0 ? String(count) : "";
+        },
+      }),
+      feed.subscribe(host.ui.invalidate),
       host.ui.registerNavigation({
         id: "workboard",
         label: "Workboard",
@@ -92,6 +114,7 @@ export default defineControlUiPlugin({
         dispose();
       }
       catalog.dispose();
+      feed.dispose();
       workboard.dispose();
       unbind();
     };
