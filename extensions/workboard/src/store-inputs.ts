@@ -51,7 +51,13 @@ export type WorkboardUpdateCardOptions = {
   ownerSlot?: { ownerId: string; now: number };
   preserveProofId?: string;
 };
-export type WorkboardCommentInput = { body?: unknown; author?: unknown; ackFeed?: boolean };
+export type WorkboardCommentInput = {
+  body?: unknown;
+  author?: unknown;
+  ackFeed?: boolean;
+  /** Comment and ack time when it must predate the write, e.g. taken before routing. */
+  createdAt?: number;
+};
 export type WorkboardLinkInput = {
   type?: unknown;
   targetCardId?: unknown;

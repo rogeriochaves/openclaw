@@ -9,6 +9,7 @@ import {
   findFeedAction,
   resolveFeedNotifySession,
   resolveOwnerDraft,
+  FEED_EMPTY_DRAFT_ERROR,
   resolveWorkboardFeedConfig,
   routeFeedMessage,
   selectFeedCards,
@@ -70,6 +71,9 @@ export function registerWorkboardFeedGatewayMethods(params: {
         if (draft !== null && typeof draft !== "string") {
           throw new Error("draft must be a string or null.");
         }
+        if (typeof draft === "string" && !draft.trim()) {
+          throw new Error(FEED_EMPTY_DRAFT_ERROR);
+        }
         return {
           card: redactClaimToken(await store.setOwnerFeedDraft(id, draft)),
         };
@@ -95,7 +99,9 @@ export function registerWorkboardFeedGatewayMethods(params: {
         }
         const draft = resolveOwnerDraft(card, readOptionalText(requestParams, "draft"));
         const editedDraft = draft.edited;
-        // Route before acking: a failed send leaves the card open for another try.
+        // Route before acking: a failed send leaves the card open for another try. The ack keeps
+        // the time from before the send, so an agent reply that lands first still reopens the card.
+        const touchedAt = Date.now();
         const routed = await routeFeedMessage({
           gateway,
           sessionKey: resolveFeedNotifySession(card),
@@ -104,6 +110,7 @@ export function registerWorkboardFeedGatewayMethods(params: {
         });
         const acked = await store.ackFeed(card.id, {
           acked: true,
+          at: touchedAt,
           actionId: action.id,
           ...(draft.changed && editedDraft !== undefined ? { draft: editedDraft } : {}),
         });
@@ -120,6 +127,7 @@ export function registerWorkboardFeedGatewayMethods(params: {
           throw new Error("comment body is required.");
         }
         const draft = resolveOwnerDraft(card, readOptionalText(requestParams, "draft"));
+        const touchedAt = Date.now();
         const routed = await routeFeedMessage({
           gateway,
           sessionKey: resolveFeedNotifySession(card),
@@ -133,6 +141,7 @@ export function registerWorkboardFeedGatewayMethods(params: {
           body,
           author: { kind: "owner" },
           ackFeed: true,
+          createdAt: touchedAt,
         });
         return { card: redactClaimToken(commented), routed };
       },

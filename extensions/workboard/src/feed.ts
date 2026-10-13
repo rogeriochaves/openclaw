@@ -8,6 +8,7 @@ import { cardBoardId } from "./store-card-helpers.js";
 export const FEED_FALLBACK_NOTIFY_SESSION = "agent:main:main";
 const FEED_DEFAULT_OWNER_NAME = "The owner";
 const FEED_MESSAGE_PREFIX = "[Feed]";
+export const FEED_EMPTY_DRAFT_ERROR = "The draft is empty. Write the text or cancel the edit.";
 
 export type WorkboardFeedConfig = {
   /** Every card on these boards shows in the Feed, with or without feed metadata. */
@@ -73,7 +74,10 @@ export function resolveOwnerDraft(
   draft: string | undefined,
 ): { edited?: string; changed: boolean } {
   const feed = card.metadata?.feed;
-  if (draft !== undefined && draft.trim() && draft !== feed?.draft) {
+  if (draft !== undefined && !draft.trim()) {
+    throw new Error(FEED_EMPTY_DRAFT_ERROR);
+  }
+  if (draft !== undefined && draft !== feed?.draft) {
     return { edited: draft, changed: true };
   }
   return feed?.draftEdited && feed.draft
