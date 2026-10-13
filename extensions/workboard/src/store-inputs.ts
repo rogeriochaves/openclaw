@@ -51,7 +51,7 @@ export type WorkboardUpdateCardOptions = {
   ownerSlot?: { ownerId: string; now: number };
   preserveProofId?: string;
 };
-export type WorkboardCommentInput = { body?: unknown };
+export type WorkboardCommentInput = { body?: unknown; author?: unknown; ackFeed?: boolean };
 export type WorkboardLinkInput = {
   type?: unknown;
   targetCardId?: unknown;

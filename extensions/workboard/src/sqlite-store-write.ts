@@ -89,6 +89,7 @@ export function insertCard(db: DatabaseSync, card: WorkboardCard): void {
           bindNull(metadata?.lifecycleStatusSourceUpdatedAt),
         ),
         failure_count: p(() => bindNull(metadata?.failureCount)),
+        feed_json: p(() => jsonValue(metadata?.feed)),
       })
       .onConflict((conflict) =>
         conflict.column("id").doUpdateSet((eb) => ({
@@ -124,6 +125,7 @@ export function insertCard(db: DatabaseSync, card: WorkboardCard): void {
           stale_json: eb.ref("excluded.stale_json"),
           lifecycle_status_source_updated_at: eb.ref("excluded.lifecycle_status_source_updated_at"),
           failure_count: eb.ref("excluded.failure_count"),
+          feed_json: eb.ref("excluded.feed_json"),
         })),
       ),
   );
@@ -183,6 +185,8 @@ export function insertCard(db: DatabaseSync, card: WorkboardCard): void {
         body: p(() => entry.body),
         created_at: p(() => entry.createdAt),
         updated_at: p(() => bindNull(entry.updatedAt)),
+        author_kind: p(() => bindNull(entry.author?.kind)),
+        author_id: p(() => bindNull(entry.author?.id)),
       }),
     );
     db.prepare(compiled.sql).run(...bind());

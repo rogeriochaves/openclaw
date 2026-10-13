@@ -1,9 +1,10 @@
+// Workboard plugin module implements cli behavior.
+import fs from "node:fs/promises";
 import {
   WORKBOARD_STATUSES,
   type WorkboardCard,
   type WorkboardStatus,
 } from "@openclaw/workboard-contract";
-// Workboard plugin module implements cli behavior.
 import type { Command } from "commander";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { addGatewayClientOptions, callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
@@ -251,6 +252,52 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
         throw new Error(error);
       }
       const updated = await params.store.move(card.id, options.status, undefined);
+      if (options.json) {
+        writeJson({ card: redactClaimToken(updated) });
+      } else {
+        writeLine(formatCardLine(updated));
+      }
+    });
+
+  workboard
+    .command("comment")
+    .argument("<id>", "Card id or prefix")
+    .argument("<body>", "Comment text")
+    .description("Add a comment to a Workboard card")
+    .option("--agent <agentId>", "Comment as this agent (reopens an acked Feed card)")
+    .option("--json", "Print JSON", false)
+    .action(async (id: string, body: string, options: JsonOptions & { agent?: string }) => {
+      const cards = await params.store.list();
+      const { card, error } = resolveWorkboardCardByIdOrPrefix(cards, id);
+      if (!card) {
+        throw new Error(error);
+      }
+      const agentId = options.agent?.trim();
+      const updated = await params.store.addComment(card.id, {
+        body,
+        author: agentId ? { kind: "agent", id: agentId } : { kind: "owner" },
+      });
+      if (options.json) {
+        writeJson({ card: redactClaimToken(updated) });
+      } else {
+        writeLine(formatCardLine(updated));
+      }
+    });
+
+  workboard
+    .command("feed")
+    .argument("<id>", "Card id or prefix")
+    .argument("<json>", "Feed fields as JSON, or @path to a JSON file")
+    .description("Set Feed presentation fields on a Workboard card (same fields as workboard_feed)")
+    .option("--json", "Print JSON", false)
+    .action(async (id: string, input: string, options: JsonOptions) => {
+      const cards = await params.store.list();
+      const { card, error } = resolveWorkboardCardByIdOrPrefix(cards, id);
+      if (!card) {
+        throw new Error(error);
+      }
+      const raw = input.startsWith("@") ? await fs.readFile(input.slice(1), "utf8") : input;
+      const updated = await params.store.updateFeed(card.id, JSON.parse(raw) as unknown);
       if (options.json) {
         writeJson({ card: redactClaimToken(updated) });
       } else {

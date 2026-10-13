@@ -331,6 +331,11 @@ function readMetadata(
     if (updatedAt !== undefined) {
       entry.updatedAt = updatedAt;
     }
+    const authorKind = stringValue(child, "author_kind");
+    if (authorKind === "owner" || authorKind === "agent") {
+      const authorId = stringValue(child, "author_id");
+      entry.author = { kind: authorKind, ...(authorId ? { id: authorId } : {}) };
+    }
     return entry;
   });
   const links = childRows(db, "workboard_card_links", cardId, preloaded).map((child) => {
@@ -469,6 +474,8 @@ function readMetadata(
   const claim = parseJson(row.claim_json) as WorkboardMetadata["claim"] | undefined;
   // SAFETY: insertCard serializes WorkboardMetadata.stale unchanged.
   const stale = parseJson(row.stale_json) as WorkboardMetadata["stale"] | undefined;
+  // SAFETY: insertCard serializes normalized WorkboardMetadata.feed unchanged.
+  const feed = parseJson(row.feed_json) as WorkboardMetadata["feed"] | undefined;
   const lifecycleStatusSourceUpdatedAt = numberValue(row, "lifecycle_status_source_updated_at");
   return optional({
     ...(attempts.length > 0 ? { attempts } : {}),
@@ -508,6 +515,7 @@ function readMetadata(
     ...(numberValue(row, "failure_count") !== undefined
       ? { failureCount: numberValue(row, "failure_count") }
       : {}),
+    ...(feed ? { feed } : {}),
   });
 }
 

@@ -8,6 +8,7 @@ import type {
   WorkboardStatus,
 } from "@openclaw/workboard-contract";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { mergeFeedPatch, normalizeCommentAuthor } from "./feed-normalize.js";
 import type {
   PersistedWorkboardAttachment,
   PersistedWorkboardBoard,
@@ -953,13 +954,55 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     if (!body) {
       throw new Error("comment body is required.");
     }
-    const comment = { id: randomUUID(), body, createdAt: now };
+    const author = normalizeCommentAuthor(input.author);
+    const comment = { id: randomUUID(), body, createdAt: now, ...(author ? { author } : {}) };
     return await this.updateMetadata(id, (existing) => {
       assertCanMutateClaimedCard(existing, scope);
       return {
         ...existing.metadata,
         comments: [...(existing.metadata?.comments ?? []), comment].slice(-MAX_CARD_COMMENTS),
+        ...(input.ackFeed === true
+          ? { feed: { ...existing.metadata?.feed, ackedAt: now, ackedAction: undefined } }
+          : {}),
       };
+    });
+  }
+
+  /** Merge agent-authored Feed fields; `null` clears a field and `reopen` clears the ack. */
+  async updateFeed(
+    id: string,
+    patch: unknown,
+    scope?: WorkboardMutationScope,
+  ): Promise<WorkboardCard> {
+    return await this.updateMetadata(id, (existing) => {
+      assertCanMutateClaimedCard(existing, scope);
+      return { ...existing.metadata, feed: mergeFeedPatch(existing.metadata?.feed, patch) };
+    });
+  }
+
+  /** Record (or undo) the owner's Feed ack. Acking never changes the card's status. */
+  async ackFeed(
+    id: string,
+    input: { acked: boolean; actionId?: string; draft?: string },
+  ): Promise<WorkboardCard> {
+    const now = Date.now();
+    return await this.updateMetadata(id, (existing) => {
+      const feed = { ...existing.metadata?.feed };
+      if (input.draft !== undefined) {
+        feed.draft = input.draft;
+      }
+      if (input.acked) {
+        feed.ackedAt = now;
+        if (input.actionId) {
+          feed.ackedAction = input.actionId;
+        } else {
+          delete feed.ackedAction;
+        }
+      } else {
+        delete feed.ackedAt;
+        delete feed.ackedAction;
+      }
+      return { ...existing.metadata, feed };
     });
   }
 
