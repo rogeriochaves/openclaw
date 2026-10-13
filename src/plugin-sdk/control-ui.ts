@@ -142,6 +142,8 @@ export type ControlUiNavigationItem = {
   order?: number;
   /** False offers the destination in the pin editor without adding it to the sidebar. */
   defaultVisible?: boolean;
+  /** Short count or status shown after the label, such as unread items. Empty hides it. */
+  badge?: string;
 };
 
 export type ControlUiPanel = {

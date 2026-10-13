@@ -411,7 +411,11 @@ class ControlUiPluginContributions extends OpenClawLightDomContentsElement {
               entry.host.navigation.openPage(entry.value.page);
             }}
             ><span class="nav-item__icon" aria-hidden="true">${icons[icon]}</span
-            ><span class="nav-item__text">${entry.value.label}</span></a
+            ><span class="nav-item__text">${entry.value.label}</span>${
+              entry.value.badge
+                ? html`<span class="nav-item__badge">${entry.value.badge}</span>`
+                : nothing
+            }</a
           >`;
         });
     }
