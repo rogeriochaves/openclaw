@@ -1,4 +1,4 @@
-import { ROOT_CONTEXT, SpanStatusCode } from "@opentelemetry/api";
+import { context as otelContextApi, ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   isInternalDiagnosticEventMetadata,
   normalizeDiagnosticValue,
@@ -43,6 +43,7 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     paramsSummaryAttrs,
     contentCapturePolicy,
     tracesEnabled,
+    captureRootOperationSpans,
   } = runtime;
 
   const toolExecutionBaseAttrs = (
@@ -344,6 +345,9 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     evt: Extract<DiagnosticEventPayload, { type: "diagnostic.phase.completed" }>,
   ) => {
     if (!tracesEnabled) {
+      return;
+    }
+    if (!captureRootOperationSpans && !trace.getSpan(otelContextApi.active())) {
       return;
     }
     const spanAttrs: Record<string, string | number> = {

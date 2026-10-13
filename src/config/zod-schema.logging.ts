@@ -43,6 +43,8 @@ export const DiagnosticsConfigSchema = z
         captureContent: z.boolean().optional(),
         /** Opt in to session key and agent id attributes on run, model, and tool spans. */
         captureSessionIdentity: z.boolean().optional(),
+        /** Export gateway RPC and diagnostic phase spans that would start their own trace. */
+        captureRootOperationSpans: z.boolean().optional(),
       })
       .optional(),
     cacheTrace: z

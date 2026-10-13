@@ -62,6 +62,7 @@ paths.
       flushIntervalMs: 60000, // metric export interval (min 1000ms)
       captureContent: false,
       captureSessionIdentity: false, // session key + agent id on spans
+      captureRootOperationSpans: true, // false drops parentless gateway RPC / phase spans
     },
   },
 }

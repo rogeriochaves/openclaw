@@ -23,7 +23,7 @@ import type { TrustedSpanAliasOwner } from "./service-types.js";
 
 export function createDiagnosticsTraceRuntime(
   tracer: Tracer,
-  options: { captureSessionIdentity?: boolean } = {},
+  options: { captureSessionIdentity?: boolean; captureRootOperationSpans?: boolean } = {},
 ) {
   const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
   const activeTrustedSpanAliases = new Map<
@@ -439,6 +439,8 @@ export function createDiagnosticsTraceRuntime(
     completeTrackedLifecycleSpan,
     addRunAttrs,
     addSessionIdentityAttrs,
+    // Gateway RPC and phase spans without a parent each start a one-span trace.
+    captureRootOperationSpans: options.captureRootOperationSpans !== false,
     paramsSummaryAttrs,
     stopActiveTrustedSpans,
   };

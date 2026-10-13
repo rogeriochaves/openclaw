@@ -55,6 +55,7 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     completeTrackedLifecycleSpan,
     addRunAttrs,
     tracesEnabled,
+    captureRootOperationSpans,
   } = runtime;
 
   const recordGatewayRpc = (
@@ -95,6 +96,10 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     }
     // These completed observations do not own the handler or later response callbacks.
     // Preserve the explicit upstream parent; an absent parent must not borrow the export callback scope.
+    const parentContext = internalOrTrustedExplicitParentContext(evt, metadata);
+    if (!parentContext && !captureRootOperationSpans) {
+      return;
+    }
     const span = spanWithDuration(
       `openclaw.gateway.rpc.${evt.phase}`,
       {
@@ -108,7 +113,7 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
       evt.durationMs,
       {
         endTimeMs: evt.ts,
-        parentContext: internalOrTrustedExplicitParentContext(evt, metadata) ?? ROOT_CONTEXT,
+        parentContext: parentContext ?? ROOT_CONTEXT,
       },
     );
     if (evt.outcome === "error" || evt.outcome === "threw") {

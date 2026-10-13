@@ -319,3 +319,42 @@ test("logs-only exporters do not subscribe to Gateway RPC timings", async () => 
   expect(received).not.toContain("gateway.rpc");
   expect(received).not.toContain("queue.lane.enqueue");
 });
+
+test("drops parentless Gateway RPC and phase spans when root operation spans are off", async () => {
+  context.disable();
+  expect(context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable())).toBe(
+    true,
+  );
+  await startOtelService({
+    traces: true,
+    configure: (ctx) => {
+      ctx.config.diagnostics!.otel!.captureRootOperationSpans = false;
+    },
+  });
+  const parent = createDiagnosticTraceContext();
+  emit({ type: "gateway.rpc", method: "health", phase: "response", outcome: "ok", durationMs: 10 });
+  emit({
+    type: "gateway.rpc",
+    method: "sessions.list",
+    phase: "response",
+    outcome: "ok",
+    durationMs: 12,
+    trace: createChildDiagnosticTraceContext(parent),
+  });
+  emit({ type: "diagnostic.phase.completed", name: "startup.root", startedAt: 1, durationMs: 5 });
+  const runSpan = sdk.provider.getTracer("run").startSpan("run");
+  await context.with(trace.setSpan(context.active(), runSpan), async () => {
+    emit({ type: "diagnostic.phase.completed", name: "run.nested", startedAt: 1, durationMs: 5 });
+    await waitForDiagnosticEventsDrained();
+  });
+  runSpan.end();
+  await waitForDiagnosticEventsDrained();
+
+  const spans = sdk.exporter.getFinishedSpans();
+  const rpc = spans.filter((span) => span.name === "openclaw.gateway.rpc.response");
+  expect(rpc.map((span) => span.attributes["openclaw.gateway.rpc.method"])).toEqual([
+    "sessions.list",
+  ]);
+  const phases = spans.filter((span) => span.name === "openclaw.diagnostic.phase");
+  expect(phases.map((span) => span.attributes["openclaw.phase"])).toEqual(["run.nested"]);
+});
