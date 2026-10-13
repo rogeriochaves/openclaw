@@ -45,6 +45,7 @@ import {
 import { resolveNonNegativeIntegerOption } from "openclaw/plugin-sdk/number-runtime";
 import { isRecord, normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+import { feedIsEmpty, normalizeCommentAuthor, normalizeFeed } from "./feed-normalize.js";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_CARD_ARTIFACTS,
@@ -668,7 +669,14 @@ function normalizeComment(value: unknown): WorkboardComment | null {
     return null;
   }
   const updatedAt = normalizeTimestamp(record.updatedAt, 0);
-  return { id, body, createdAt, ...(updatedAt ? { updatedAt } : {}) };
+  const author = normalizeCommentAuthor(record.author);
+  return {
+    id,
+    body,
+    createdAt,
+    ...(updatedAt ? { updatedAt } : {}),
+    ...(author ? { author } : {}),
+  };
 }
 
 function normalizeLink(value: unknown): WorkboardLink | null {
@@ -1172,6 +1180,7 @@ export function normalizeMetadata(
       typeof record.failureCount === "number" && Number.isFinite(record.failureCount)
         ? Math.max(0, Math.trunc(record.failureCount))
         : fallback.failureCount,
+    feed: Object.hasOwn(record, "feed") ? normalizeFeed(record.feed) : fallback.feed,
   };
   return trimMetadataToBudget(normalized, options);
 }
@@ -1283,10 +1292,12 @@ export function removeUndefinedMetadataFields(metadata: WorkboardMetadata): Work
     "stale",
     "lifecycleStatusSourceUpdatedAt",
     "failureCount",
+    "feed",
   ] as const) {
     const value = next[key];
     if (
       value === undefined ||
+      (key === "feed" && feedIsEmpty(next.feed)) ||
       (Array.isArray(value) && value.length === 0) ||
       (typeof value === "number" && value === 0 && key === "failureCount")
     ) {

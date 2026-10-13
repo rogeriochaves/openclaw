@@ -61,6 +61,7 @@ export const WORKBOARD_TOOL_NAMES = [
   "workboard_protocol_violation",
   "workboard_unblock",
   "workboard_move",
+  "workboard_feed",
 ] as const;
 
 export const WORKBOARD_REQUIRED_WORKER_TOOLS = [

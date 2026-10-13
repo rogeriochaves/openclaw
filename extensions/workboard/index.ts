@@ -4,6 +4,7 @@ import { registerWorkboardGatewayMethods } from "./runtime-api.js";
 import { createWorkboardAutomationNudgeService } from "./src/automation-nudge.js";
 import { createWorkboardChangeEventService } from "./src/change-events.js";
 import { registerWorkboardCommand } from "./src/command.js";
+import { resolveWorkboardFeedConfig } from "./src/feed.js";
 import {
   createWorkboardLifecycleService,
   readWorkboardLifecycleSessions,
@@ -73,6 +74,7 @@ export default definePluginEntry({
       requiredScopes: ["operator.read"],
     });
     registerWorkboardGatewayMethods({ api, store });
+    const feedConfig = resolveWorkboardFeedConfig(api.pluginConfig);
     registerWorkboardCommand({ api, store });
     api.registerService(changeEvents);
     api.registerService(automationNudge);
@@ -117,7 +119,7 @@ export default definePluginEntry({
     api.registerTool(
       (context) =>
         guardWorkboardToolsForWorkspaceAccess(
-          createWorkboardTools({ context, store }),
+          createWorkboardTools({ context, store, feedConfig }),
           context,
           api.runtime.sandbox.resolveWorkspaceAuthority,
         ),

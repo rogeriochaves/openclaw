@@ -136,11 +136,65 @@ export type WorkboardRunAttempt = {
   error?: string;
 };
 
+export type WorkboardCommentAuthor = {
+  /** `owner` is the operator in the Control UI; `agent` is an agent tool call. */
+  kind: "owner" | "agent";
+  id?: string;
+};
+
 export type WorkboardComment = {
   id: string;
   body: string;
   createdAt: number;
   updatedAt?: number;
+  author?: WorkboardCommentAuthor;
+};
+
+export type WorkboardFeedActionStyle = "primary" | "secondary";
+
+/** A Feed button. Clicking it sends `message` back to the card's notify session. */
+export type WorkboardFeedAction = {
+  id: string;
+  label: string;
+  message: string;
+  style?: WorkboardFeedActionStyle;
+  /** Button text after the click, for example "Sent" for "Send". */
+  doneLabel?: string;
+};
+
+export type WorkboardFeedLink = {
+  label: string;
+  url: string;
+};
+
+export type WorkboardFeedMetricBar = {
+  label: string;
+  value: number;
+};
+
+export type WorkboardFeedMetric = {
+  value: string;
+  delta?: string;
+  caption?: string;
+  bars?: WorkboardFeedMetricBar[];
+};
+
+/** Agent-authored presentation for the Feed view, plus the owner's ack state. */
+export type WorkboardFeed = {
+  tag?: string;
+  summary?: string;
+  body?: string;
+  draft?: string;
+  draftHeader?: string;
+  metric?: WorkboardFeedMetric;
+  links?: WorkboardFeedLink[];
+  actions?: WorkboardFeedAction[];
+  doneLabel?: string;
+  /** Session that receives Feed clicks and comments for this card. */
+  notify?: string;
+  ackedAt?: number;
+  /** Action id the owner clicked when acking; absent for a plain ack or comment. */
+  ackedAction?: string;
 };
 
 export type WorkboardLink = {
@@ -365,6 +419,7 @@ export type WorkboardMetadata = {
   stale?: WorkboardStaleState;
   lifecycleStatusSourceUpdatedAt?: number;
   failureCount?: number;
+  feed?: WorkboardFeed;
 };
 
 export type WorkboardCard = {

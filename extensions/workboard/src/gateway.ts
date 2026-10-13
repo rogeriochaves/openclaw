@@ -2,6 +2,7 @@
 import type { WorkboardCard } from "@openclaw/workboard-contract";
 import type { OpenClawPluginApi } from "../api.js";
 import { redactClaimToken } from "./card-redaction.js";
+import { registerWorkboardFeedGatewayMethods } from "./gateway-feed.js";
 import {
   assertNoCursorAdvance,
   createWorkboardDispatchHandler,
@@ -116,7 +117,13 @@ export function registerWorkboardGatewayMethods(params: {
       "workboard.cards.comment",
       WRITE_SCOPE,
       ({ params: requestParams }) =>
-        redactCardResult(store.addComment(readId(requestParams), requestParams)),
+        // Gateway callers are operators; agent comments arrive through workboard_comment.
+        redactCardResult(
+          store.addComment(readId(requestParams), {
+            body: requestParams.body,
+            author: { kind: "owner" },
+          }),
+        ),
     ],
     [
       "workboard.cards.link",
@@ -267,6 +274,8 @@ export function registerWorkboardGatewayMethods(params: {
   ]);
 
   registerWorkboardWorkspaceWorkflowMethods({ api, store, redactCard: redactClaimToken });
+
+  registerWorkboardFeedGatewayMethods({ api, store });
 
   registerWorkboardResultMethods(api, [
     [
