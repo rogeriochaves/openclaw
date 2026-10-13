@@ -949,7 +949,7 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     input: WorkboardCommentInput,
     scope?: WorkboardMutationScope,
   ): Promise<WorkboardCard> {
-    const now = Date.now();
+    const now = input.createdAt ?? Date.now();
     const body = normalizeBoundedString(input.body, undefined, 2000, "comment body");
     if (!body) {
       throw new Error("comment body is required.");
@@ -960,7 +960,10 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
       assertCanMutateClaimedCard(existing, scope);
       return {
         ...existing.metadata,
-        comments: [...(existing.metadata?.comments ?? []), comment].slice(-MAX_CARD_COMMENTS),
+        // A backdated comment still sorts before any reply written after its timestamp.
+        comments: [...(existing.metadata?.comments ?? []), comment]
+          .toSorted((a, b) => a.createdAt - b.createdAt)
+          .slice(-MAX_CARD_COMMENTS),
         ...(input.ackFeed === true
           ? { feed: { ...existing.metadata?.feed, ackedAt: now, ackedAction: undefined } }
           : {}),
@@ -998,9 +1001,9 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
   /** Record (or undo) the owner's Feed ack. Acking never changes the card's status. */
   async ackFeed(
     id: string,
-    input: { acked: boolean; actionId?: string; draft?: string },
+    input: { acked: boolean; at?: number; actionId?: string; draft?: string },
   ): Promise<WorkboardCard> {
-    const now = Date.now();
+    const now = input.at ?? Date.now();
     return await this.updateMetadata(id, (existing) => {
       const feed = { ...existing.metadata?.feed };
       if (input.draft !== undefined) {

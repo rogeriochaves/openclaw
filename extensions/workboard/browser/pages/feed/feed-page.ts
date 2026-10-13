@@ -183,6 +183,8 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       state.pendingAction = action.id;
       state.error = undefined;
       requestUpdate();
+      // Hold first so the acked card keeps its place while the store republishes.
+      held.set(item.card.id, { item, index });
       try {
         await feed.act(item.card.id, action.id, state.editing ? state.draftText : undefined);
         state.confirmedLabel = action.doneLabel ?? action.label;
@@ -190,6 +192,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
         collapse(item, index);
         showToast(t("feed.sentTo", { agent: agentName(host, notifyAgentId(item)) }));
       } catch (error) {
+        held.delete(item.card.id);
         state.phase = "idle";
         state.pendingAction = undefined;
         state.error = formatUiError(error);
@@ -205,12 +208,15 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       state.phase = "pending";
       state.pendingAction = "__ack";
       requestUpdate();
+      // Hold first so the acked card keeps its place while the store republishes.
+      held.set(item.card.id, { item, index });
       try {
         await feed.ack(item.card.id, true);
         state.confirmedLabel = t("feed.done");
         collapse(item, index);
         showToast(t("feed.movedToHandled"), () => void feed.ack(item.card.id, false));
       } catch (error) {
+        held.delete(item.card.id);
         state.phase = "idle";
         state.error = formatUiError(error);
         requestUpdate();
@@ -227,6 +233,8 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       state.pendingAction = "__comment";
       state.error = undefined;
       requestUpdate();
+      // Hold first so the acked card keeps its place while the store republishes.
+      held.set(item.card.id, { item, index });
       try {
         await feed.comment(item.card.id, body, state.editing ? state.draftText : undefined);
         state.editing = false;
@@ -236,6 +244,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
         collapse(item, index);
         showToast(t("feed.sentTo", { agent: agentName(host, notifyAgentId(item)) }));
       } catch (error) {
+        held.delete(item.card.id);
         state.phase = "idle";
         state.error = formatUiError(error);
         requestUpdate();
@@ -301,7 +310,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
                   <button
                     type="button"
                     class="wb-feed-btn wb-feed-btn--secondary"
-                    ?disabled=${locked}
+                    ?disabled=${locked || !state.draftText.trim()}
                     @click=${() => void saveDraft(item)}
                   >
                     ${t("feed.saveDraft")}
@@ -657,7 +666,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       const now = Date.now();
       const view = feed.view(now);
       const open = view.open.filter((item) => !held.has(item.card.id));
-      for (const [id, entry] of [...held.entries()].toSorted((a, b) => a[1].index - b[1].index)) {
+      for (const [, entry] of [...held.entries()].toSorted((a, b) => a[1].index - b[1].index)) {
         open.splice(Math.min(entry.index, open.length), 0, entry.item);
       }
       const handled = view.handled.filter((item) => !held.has(item.card.id));

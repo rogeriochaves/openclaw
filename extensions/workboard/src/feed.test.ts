@@ -195,6 +195,65 @@ describe("workboard feed", () => {
     expect(reply!.createdAt).toBeGreaterThanOrEqual(ackedAt!);
   });
 
+  it("reopens the card when the agent replies before the owner's ack is written", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_000_000);
+      const { store, gateway, call } = setup();
+      const card = await store.create({
+        title: "Pick the conference",
+        agentId: "events",
+        boardId: "owner",
+        metadata: { feed: emailFeed },
+      });
+      const tool = toolsFor(store, "events");
+      const replyDuringSend = (body: string) => async () => {
+        vi.setSystemTime(Date.now() + 1_000);
+        await tool("workboard_comment").execute("call-race", { id: card.id, body });
+        vi.setSystemTime(Date.now() + 1_000);
+        return { runId: "run-1" };
+      };
+      for (const request of [
+        () => call("workboard.feed.act", { id: card.id, actionId: "send" }),
+        () => call("workboard.feed.comment", { id: card.id, body: "Only under 5k." }),
+      ]) {
+        gateway.request.mockImplementationOnce(replyDuringSend("Booked."));
+        await request();
+        const stored = await store.get(card.id);
+        const reply = stored?.metadata?.comments?.at(-1);
+        expect(reply).toMatchObject({ body: "Booked.", author: { kind: "agent" } });
+        expect(reply!.createdAt).toBeGreaterThan(stored!.metadata!.feed!.ackedAt!);
+      }
+      // The owner comment keeps its pre-send time and sorts before the reply it caused.
+      const comments = (await store.get(card.id))?.metadata?.comments ?? [];
+      expect(comments.map((comment) => comment.body)).toEqual([
+        "Booked.",
+        "Only under 5k.",
+        "Booked.",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects an emptied draft instead of dropping the owner's edit", async () => {
+    const { store, gateway, call } = setup();
+    const card = await store.create({ title: "Decide", metadata: { feed: emailFeed } });
+    await expect(
+      call("workboard.feed.act", { id: card.id, actionId: "send", draft: "  " }),
+    ).rejects.toThrow("The draft is empty");
+    await expect(call("workboard.feed.update", { id: card.id, draft: "" })).rejects.toThrow(
+      "The draft is empty",
+    );
+    await expect(
+      call("workboard.feed.comment", { id: card.id, body: "ok", draft: "\n" }),
+    ).rejects.toThrow("The draft is empty");
+    expect(gateway.request).not.toHaveBeenCalled();
+    const stored = await store.get(card.id);
+    expect(stored?.metadata?.feed).toMatchObject({ draft: emailFeed.draft });
+    expect(stored?.metadata?.feed?.ackedAt).toBeUndefined();
+  });
+
   it("acks and undoes, and agents can reopen through workboard_feed", async () => {
     const { store, call } = setup();
     const card = await store.create({ title: "FYI: invoice paid", metadata: { feed: emailFeed } });
