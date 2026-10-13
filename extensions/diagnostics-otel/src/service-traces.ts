@@ -6,6 +6,7 @@ import {
   type SpanKind,
   type Tracer,
 } from "@opentelemetry/api";
+import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import type {
   DiagnosticEventMetadata,
   DiagnosticEventPayload,
@@ -20,7 +21,10 @@ import {
 } from "./service-trace-context.js";
 import type { TrustedSpanAliasOwner } from "./service-types.js";
 
-export function createDiagnosticsTraceRuntime(tracer: Tracer) {
+export function createDiagnosticsTraceRuntime(
+  tracer: Tracer,
+  options: { captureSessionIdentity?: boolean } = {},
+) {
   const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
   const activeTrustedSpanAliases = new Map<
     string,
@@ -356,6 +360,8 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
       runId?: string;
       sessionKey?: string;
       sessionId?: string;
+      requesterSessionKey?: string;
+      agentId?: string;
       provider?: string;
       model?: string;
       channel?: string;
@@ -373,6 +379,21 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     }
     if (evt.trigger) {
       spanAttrs["openclaw.trigger"] = evt.trigger;
+    }
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent"] = normalizeDiagnosticValue(evt.agentId);
+    }
+    // Opt-in GenAI identity: lets trace backends group turns into conversations.
+    if (options.captureSessionIdentity) {
+      if (evt.sessionKey) {
+        spanAttrs["gen_ai.conversation.id"] = evt.sessionKey;
+      }
+      if (evt.agentId) {
+        spanAttrs["gen_ai.agent.id"] = evt.agentId;
+      }
+      if (evt.requesterSessionKey) {
+        spanAttrs["openclaw.requester.conversation.id"] = evt.requesterSessionKey;
+      }
     }
   };
 
