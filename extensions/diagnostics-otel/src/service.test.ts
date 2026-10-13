@@ -4527,6 +4527,18 @@ describe("diagnostics-otel service", () => {
       ...MODEL_FIXTURE,
       trace: createTestTrace(SPAN_ID),
     });
+    emitEvent("harness.run.completed", {
+      runId: "run-1",
+      sessionKey: "agent:forge:main",
+      requesterSessionKey: "agent:main:main",
+      agentId: "forge",
+      ...MODEL_FIXTURE,
+      harnessId: "claude-cli",
+    });
+    emitEvent("model.call.completed", {
+      sessionKey: "agent:forge:main",
+      trace: createTestTrace(GRANDCHILD_SPAN_ID, SPAN_ID),
+    });
     await emitEventAndFlush("tool.execution.completed", {
       sessionKey: "agent:main:subagent:child",
       agentId: "main",
@@ -4542,6 +4554,14 @@ describe("diagnostics-otel service", () => {
     expect(startedSpanOptions("openclaw.tool.execution")?.attributes).toMatchObject({
       "gen_ai.conversation.id": "agent:main:subagent:child",
       "gen_ai.agent.id": "main",
+    });
+    expect(startedSpanOptions("openclaw.harness.run")?.attributes).toMatchObject({
+      "gen_ai.conversation.id": "agent:forge:main",
+      "gen_ai.agent.id": "forge",
+      "openclaw.requester.conversation.id": "agent:main:main",
+    });
+    expect(startedSpanOptions("openclaw.model.call")?.attributes).toMatchObject({
+      "gen_ai.conversation.id": "agent:forge:main",
     });
   });
 

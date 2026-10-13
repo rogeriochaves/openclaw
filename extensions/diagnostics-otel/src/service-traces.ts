@@ -354,6 +354,25 @@ export function createDiagnosticsTraceRuntime(
     }
   };
 
+  // Opt-in GenAI identity: lets trace backends group turns into conversations.
+  const addSessionIdentityAttrs = (
+    spanAttrs: Record<string, string | number | boolean>,
+    evt: { sessionKey?: string; requesterSessionKey?: string; agentId?: string },
+  ) => {
+    if (!options.captureSessionIdentity) {
+      return;
+    }
+    if (evt.sessionKey) {
+      spanAttrs["gen_ai.conversation.id"] = evt.sessionKey;
+    }
+    if (evt.agentId) {
+      spanAttrs["gen_ai.agent.id"] = evt.agentId;
+    }
+    if (evt.requesterSessionKey) {
+      spanAttrs["openclaw.requester.conversation.id"] = evt.requesterSessionKey;
+    }
+  };
+
   const addRunAttrs = (
     spanAttrs: Record<string, string | number | boolean>,
     evt: {
@@ -383,18 +402,7 @@ export function createDiagnosticsTraceRuntime(
     if (evt.agentId) {
       spanAttrs["openclaw.agent"] = normalizeDiagnosticValue(evt.agentId);
     }
-    // Opt-in GenAI identity: lets trace backends group turns into conversations.
-    if (options.captureSessionIdentity) {
-      if (evt.sessionKey) {
-        spanAttrs["gen_ai.conversation.id"] = evt.sessionKey;
-      }
-      if (evt.agentId) {
-        spanAttrs["gen_ai.agent.id"] = evt.agentId;
-      }
-      if (evt.requesterSessionKey) {
-        spanAttrs["openclaw.requester.conversation.id"] = evt.requesterSessionKey;
-      }
-    }
+    addSessionIdentityAttrs(spanAttrs, evt);
   };
 
   const paramsSummaryAttrs = (
@@ -430,6 +438,7 @@ export function createDiagnosticsTraceRuntime(
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionIdentityAttrs,
     paramsSummaryAttrs,
     stopActiveTrustedSpans,
   };

@@ -24,6 +24,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionIdentityAttrs,
     tracesEnabled,
   } = runtime;
 
@@ -47,10 +48,12 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (!tracesEnabled || !metadata.trusted) {
       return;
     }
+    const spanAttrs: Record<string, string | number | boolean> = harnessRunMetricAttrs(evt);
+    addSessionIdentityAttrs(spanAttrs, evt);
     trackTrustedSpan(
       evt,
       metadata,
-      spanWithDuration("openclaw.harness.run", harnessRunMetricAttrs(evt), undefined, {
+      spanWithDuration("openclaw.harness.run", spanAttrs, undefined, {
         parentContext: activeTrustedParentContext(evt, metadata),
         startTimeMs: evt.ts,
       }),
@@ -69,6 +72,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       ...harnessRunMetricAttrs(evt),
     };
+    addSessionIdentityAttrs(spanAttrs, evt);
     if (evt.resultClassification) {
       spanAttrs["openclaw.harness.result_classification"] = normalizeDiagnosticValue(
         evt.resultClassification,
@@ -134,6 +138,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(redactedError ? { "openclaw.error": redactedError } : {}),
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
+    addSessionIdentityAttrs(spanAttrs, evt);
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)
