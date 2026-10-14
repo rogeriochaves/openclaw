@@ -20,7 +20,7 @@ function setup(pluginConfig: unknown = { feed: { boards: ["owner"], ownerName: "
       methods.set(name, handler);
     },
   });
-  registerWorkboardFeedGatewayMethods({ api, store, gateway });
+  registerWorkboardFeedGatewayMethods({ api, store, gateway: gateway as never });
   const call = async (method: string, params: Record<string, unknown>) => {
     const respond = vi.fn();
     await methods.get(method)!({ params, respond } as never);
