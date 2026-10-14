@@ -9,6 +9,7 @@ import { feedGreeting, type FeedItem } from "../../lib/feed/feed-view.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import type { WorkboardComment, WorkboardFeedAction } from "../../lib/workboard/types.ts";
 import { renderFeedMarkdown } from "./feed-markdown.ts";
+import { formatWakeTime, renderSnoozedSection, renderSnoozePanel } from "./feed-snooze.ts";
 
 export const FEED_PAGE_ID = "feed";
 
@@ -30,6 +31,8 @@ type CardUi = {
   draftText: string;
   commentOpen: boolean;
   commentText: string;
+  snoozeOpen: boolean;
+  snoozeCustom: string;
   bodyExpanded: boolean;
   threadExpanded: boolean;
   error?: string;
@@ -44,6 +47,8 @@ function newCardUi(): CardUi {
     draftText: "",
     commentOpen: false,
     commentText: "",
+    snoozeOpen: false,
+    snoozeCustom: "",
     bodyExpanded: false,
     threadExpanded: false,
   };
@@ -95,6 +100,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
     let disposed = false;
     let queued = false;
     let handledExpanded = false;
+    let snoozedExpanded = false;
     let toast: Toast | null = null;
     const ui = new Map<string, CardUi>();
     // Decided cards stay in place, checked, until their fold animation ends.
@@ -248,6 +254,34 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
         state.phase = "idle";
         state.error = formatUiError(error);
         requestUpdate();
+      }
+    };
+
+    const runSnooze = async (item: FeedItem, until: number) => {
+      const state = cardUi(item.card.id);
+      if (state.phase !== "idle") {
+        return;
+      }
+      state.error = undefined;
+      try {
+        await feed.snooze(item.card.id, until);
+        state.snoozeOpen = false;
+        state.snoozeCustom = "";
+        showToast(
+          t("feed.snoozedUntil", { time: formatWakeTime(until, Date.now()) }),
+          () => void feed.snooze(item.card.id, null),
+        );
+      } catch (error) {
+        state.error = formatUiError(error);
+        requestUpdate();
+      }
+    };
+
+    const unsnooze = async (item: FeedItem) => {
+      try {
+        await feed.snooze(item.card.id, null);
+      } catch (error) {
+        showToast(formatUiError(error));
       }
     };
 
@@ -511,6 +545,26 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
       </div>`;
     };
 
+    const renderSnooze = (item: FeedItem, state: CardUi, locked: boolean, now: number) => {
+      if (!state.snoozeOpen) {
+        return nothing;
+      }
+      return renderSnoozePanel({
+        now,
+        locked,
+        custom: state.snoozeCustom,
+        onCustom: (value) => {
+          state.snoozeCustom = value;
+          requestUpdate();
+        },
+        onPick: (until) => void runSnooze(item, until),
+        onClose: () => {
+          state.snoozeOpen = false;
+          requestUpdate();
+        },
+      });
+    };
+
     const renderActionButton = (
       item: FeedItem,
       index: number,
@@ -560,7 +614,13 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
             >${decided ? icons.check : sourceIcon}</span
           >
           <span class="wb-feed-card__tag">${item.tag || t("feed.needsYou")}</span>
-          ${item.unread ? html`<span class="wb-feed-card__unread">${t("feed.newReply")}</span>` : nothing}
+          ${
+            item.unread
+              ? html`<span class="wb-feed-card__unread">${t("feed.newReply")}</span>`
+              : item.woke
+                ? html`<span class="wb-feed-card__unread">${t("feed.reminder")}</span>`
+                : nothing
+          }
           ${
             item.card.priority === "urgent"
               ? html`<span class="wb-feed-card__urgent">${t("feed.urgent")}</span>`
@@ -596,6 +656,7 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
             : nothing
         }
         ${renderThread(item, state, now)} ${renderComposer(item, index, state, locked)}
+        ${renderSnooze(item, state, locked, now)}
         ${state.error ? html`<p class="wb-feed-card__error" role="alert">${state.error}</p>` : nothing}
         <footer class="wb-feed-card__actions">
           <div class="wb-feed-card__decisions">
@@ -620,6 +681,20 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
               }}
             >
               ${icons.messageSquare}
+            </button>
+            <button
+              type="button"
+              class="wb-feed-icon-btn ${state.snoozeOpen ? "wb-feed-icon-btn--active" : ""}"
+              aria-label=${t("feed.snoozeHint")}
+              aria-expanded=${state.snoozeOpen ? "true" : "false"}
+              title=${t("feed.snoozeHint")}
+              ?disabled=${locked}
+              @click=${() => {
+                state.snoozeOpen = !state.snoozeOpen;
+                requestUpdate();
+              }}
+            >
+              ${icons.clock}
             </button>
             <button
               type="button"
@@ -723,6 +798,16 @@ export function createFeedPage(feed: FeedStore): ControlUiView {
                   </div>`
                 : nothing
             }
+            ${renderSnoozedSection({
+              items: view.snoozed,
+              now,
+              expanded: snoozedExpanded,
+              onToggle: () => {
+                snoozedExpanded = !snoozedExpanded;
+                requestUpdate();
+              },
+              onUnsnooze: (item) => void unsnooze(item),
+            })}
             ${
               handled.length > 0
                 ? html`<section class="wb-feed-handled" aria-label=${t("feed.handledToday")}>

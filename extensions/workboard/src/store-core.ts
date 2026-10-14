@@ -958,15 +958,18 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     const comment = { id: randomUUID(), body, createdAt: now, ...(author ? { author } : {}) };
     return await this.updateMetadata(id, (existing) => {
       assertCanMutateClaimedCard(existing, scope);
+      const feed = existing.metadata?.feed;
+      // An owner reply settles the card; an agent reply wakes a snoozed one early.
+      const ack = input.ackFeed === true ? { ackedAt: now, ackedAction: undefined } : {};
+      const touchesFeed =
+        input.ackFeed === true || (author?.kind === "agent" && feed?.snoozedUntil);
       return {
         ...existing.metadata,
         // A backdated comment still sorts before any reply written after its timestamp.
         comments: [...(existing.metadata?.comments ?? []), comment]
           .toSorted((a, b) => a.createdAt - b.createdAt)
           .slice(-MAX_CARD_COMMENTS),
-        ...(input.ackFeed === true
-          ? { feed: { ...existing.metadata?.feed, ackedAt: now, ackedAction: undefined } }
-          : {}),
+        ...(touchesFeed ? { feed: { ...feed, ...ack, snoozedUntil: undefined } } : {}),
       };
     });
   }
@@ -998,6 +1001,19 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     });
   }
 
+  /** Snooze the card in the owner's Feed until `until`, or wake it now with `null`. */
+  async snoozeFeed(id: string, until: number | null): Promise<WorkboardCard> {
+    return await this.updateMetadata(id, (existing) => {
+      const feed = { ...existing.metadata?.feed };
+      if (until === null) {
+        delete feed.snoozedUntil;
+      } else {
+        feed.snoozedUntil = until;
+      }
+      return { ...existing.metadata, feed };
+    });
+  }
+
   /** Record (or undo) the owner's Feed ack. Acking never changes the card's status. */
   async ackFeed(
     id: string,
@@ -1012,6 +1028,7 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
       }
       if (input.acked) {
         feed.ackedAt = now;
+        delete feed.snoozedUntil;
         if (input.actionId) {
           feed.ackedAction = input.actionId;
         } else {
