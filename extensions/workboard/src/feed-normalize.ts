@@ -157,6 +157,7 @@ export function normalizeFeed(value: unknown): WorkboardFeed | undefined {
   const actions = normalizeActions(value.actions);
   const ackedAt = normalizeTimestamp(value.ackedAt);
   const ackedAction = ackedAt ? normalizeOptionalString(value.ackedAction) : undefined;
+  const snoozedUntil = normalizeTimestamp(value.snoozedUntil);
   return {
     ...feed,
     ...(metric ? { metric } : {}),
@@ -165,6 +166,7 @@ export function normalizeFeed(value: unknown): WorkboardFeed | undefined {
     ...(feed.draft && value.draftEdited === true ? { draftEdited: true } : {}),
     ...(ackedAt ? { ackedAt } : {}),
     ...(ackedAction ? { ackedAction: ackedAction.slice(0, 40) } : {}),
+    ...(snoozedUntil ? { snoozedUntil } : {}),
   };
 }
 
@@ -186,9 +188,18 @@ export function feedHasPresentation(feed: WorkboardFeed | undefined): boolean {
   );
 }
 
+// Owner state that an agent patch never sets directly.
+const OWNER_FEED_FIELDS = new Set([
+  "reopen",
+  "ackedAt",
+  "ackedAction",
+  "draftEdited",
+  "snoozedUntil",
+]);
+
 /**
  * Merge an agent patch into the stored Feed record. A `null` field clears it;
- * omitted fields keep their value. `reopen: true` clears the owner's ack.
+ * omitted fields keep their value. `reopen: true` clears the owner's ack and snooze.
  */
 export function mergeFeedPatch(
   existing: WorkboardFeed | undefined,
@@ -199,7 +210,7 @@ export function mergeFeedPatch(
   }
   const next: Record<string, unknown> = { ...existing };
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "reopen" || key === "ackedAt" || key === "ackedAction" || key === "draftEdited") {
+    if (OWNER_FEED_FIELDS.has(key)) {
       continue;
     }
     if (key === "draft") {
@@ -215,6 +226,7 @@ export function mergeFeedPatch(
   if (patch.reopen === true) {
     delete next.ackedAt;
     delete next.ackedAction;
+    delete next.snoozedUntil;
   }
   const normalized = normalizeFeed(next);
   return feedIsEmpty(normalized) ? undefined : normalized;
