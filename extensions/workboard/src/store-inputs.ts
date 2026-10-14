@@ -55,6 +55,8 @@ export type WorkboardCommentInput = {
   body?: unknown;
   author?: unknown;
   ackFeed?: boolean;
+  /** Agent snooze set with the comment: ISO-8601 or epoch ms; null or "" clears it. */
+  snoozeUntil?: unknown;
   /** Comment and ack time when it must predate the write, e.g. taken before routing. */
   createdAt?: number;
 };

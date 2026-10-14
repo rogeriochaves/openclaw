@@ -17,6 +17,7 @@ import {
   createWorkboardMoveTool,
   strictObject,
 } from "./tools-card-mutations.js";
+import { FeedFieldsSchema, SnoozeUntilField } from "./tools-feed-schema.js";
 import { createWorkboardOrchestrationTools } from "./tools-orchestration.js";
 
 function contextOwner(ctx: OpenClawPluginToolContext | undefined): string {
@@ -170,64 +171,6 @@ function contextAgentId(ctx: OpenClawPluginToolContext | undefined): string | un
   const agentId = (ctx as Record<string, unknown> | undefined)?.agentId;
   return typeof agentId === "string" && agentId.trim() ? agentId.trim() : undefined;
 }
-
-const FeedFieldsSchema = {
-  tag: Type.Optional(
-    Type.String({ description: 'Small uppercase source tag, e.g. "EMAIL · DRAFT".' }),
-  ),
-  summary: Type.Optional(Type.String({ description: "One muted context line under the title." })),
-  body: Type.Optional(
-    Type.String({ description: "Longer detail (light markdown). Long text folds behind More." }),
-  ),
-  draft: Type.Optional(
-    Type.String({
-      description: "Editable text the owner may change before acting, e.g. an email or post.",
-    }),
-  ),
-  draftHeader: Type.Optional(
-    Type.String({ description: 'Muted lines above the draft, e.g. "To: Dana\nRe: Q3 proposal".' }),
-  ),
-  metric: Type.Optional(
-    strictObject({
-      value: Type.String({ description: 'Headline number, e.g. "$4.2M".' }),
-      delta: Type.Optional(Type.String({ description: 'Change line, e.g. "+12% vs Q2".' })),
-      caption: Type.Optional(Type.String({ description: "Muted caption." })),
-      bars: Type.Optional(
-        Type.Array(strictObject({ label: Type.String(), value: Type.Number() }), {
-          description: "Small bar chart; the last bar is highlighted.",
-        }),
-      ),
-    }),
-  ),
-  links: Type.Optional(
-    Type.Array(strictObject({ label: Type.String(), url: Type.String() }), {
-      description: "Link chips, e.g. Open draft. Pass [] to clear.",
-    }),
-  ),
-  actions: Type.Optional(
-    Type.Array(
-      strictObject({
-        label: Type.String({ description: "Button text, e.g. Send." }),
-        message: Type.String({
-          description: "Text sent back to the notify session when the owner clicks.",
-        }),
-        style: Type.Optional(Type.String({ description: "primary or secondary." })),
-        doneLabel: Type.Optional(Type.String({ description: "Button text after the click." })),
-        id: Type.Optional(Type.String({ description: "Stable action id." })),
-      }),
-      { description: "Up to 4 buttons. Pass [] to clear." },
-    ),
-  ),
-  doneLabel: Type.Optional(
-    Type.String({ description: 'One line shown once handled, e.g. "Sent the Q3 proposal".' }),
-  ),
-  notify: Type.Optional(
-    Type.String({
-      description:
-        "Session key that receives clicks and comments. Default: your agent main session.",
-    }),
-  ),
-};
 
 const CardIdSchema = strictObject({
   id: cardIdField(),
@@ -475,18 +418,24 @@ export function createWorkboardTools(params: {
     {
       name: "workboard_comment",
       label: "Workboard Comment",
-      description: "Append a compact comment to a Workboard card.",
+      description:
+        "Append a compact comment to a Workboard card. A comment wakes a snoozed Feed card unless it passes snoozeUntil.",
       parameters: strictObject({
         id: cardIdField(),
         body: Type.String({ description: "Comment body." }),
         token: ScopedClaimTokenField,
+        snoozeUntil: SnoozeUntilField,
       }),
       execute: async (_toolCallId, rawParams) => {
         const { record, id, scope } = await readScopedCardToolParams(rawParams);
         return redactedCardResult(
           await store.addComment(
             id,
-            { body: record.body, author: { kind: "agent", ...(agentId ? { id: agentId } : {}) } },
+            {
+              body: record.body,
+              author: { kind: "agent", ...(agentId ? { id: agentId } : {}) },
+              snoozeUntil: record.snoozeUntil,
+            },
             scope,
           ),
         );
@@ -496,7 +445,7 @@ export function createWorkboardTools(params: {
       name: "workboard_feed",
       label: "Workboard Feed",
       description:
-        "Set how a card shows in the owner's Feed: tag, one-line summary, body, an editable draft, links, a metric, and up to 4 action buttons. Clicking a button sends its message to the notify session. Omitted fields keep their value; an empty string or [] clears one. reopen: true puts an acked card back in front of the owner.",
+        "Set how a card shows in the owner's Feed: tag, one-line summary, body, an editable draft, links, a metric, and up to 4 action buttons. Clicking a button sends its message to the notify session. Omitted fields keep their value; an empty string or [] clears one. reopen: true puts an acked card back in front of the owner. snoozeUntil: hide the card from the owner until this time, e.g. a dated follow-up; it wins over reopen.",
       parameters: strictObject({
         id: cardIdField(),
         token: ScopedClaimTokenField,

@@ -265,24 +265,35 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
     .argument("<body>", "Comment text")
     .description("Add a comment to a Workboard card")
     .option("--agent <agentId>", "Comment as this agent (reopens an acked Feed card)")
+    .option(
+      "--snooze-until <time>",
+      'Hide the Feed card from the owner until this time (ISO-8601 or epoch ms; "" clears it)',
+    )
     .option("--json", "Print JSON", false)
-    .action(async (id: string, body: string, options: JsonOptions & { agent?: string }) => {
-      const cards = await params.store.list();
-      const { card, error } = resolveWorkboardCardByIdOrPrefix(cards, id);
-      if (!card) {
-        throw new Error(error);
-      }
-      const agentId = options.agent?.trim();
-      const updated = await params.store.addComment(card.id, {
-        body,
-        author: agentId ? { kind: "agent", id: agentId } : { kind: "owner" },
-      });
-      if (options.json) {
-        writeJson({ card: redactClaimToken(updated) });
-      } else {
-        writeLine(formatCardLine(updated));
-      }
-    });
+    .action(
+      async (
+        id: string,
+        body: string,
+        options: JsonOptions & { agent?: string; snoozeUntil?: string },
+      ) => {
+        const cards = await params.store.list();
+        const { card, error } = resolveWorkboardCardByIdOrPrefix(cards, id);
+        if (!card) {
+          throw new Error(error);
+        }
+        const agentId = options.agent?.trim();
+        const updated = await params.store.addComment(card.id, {
+          body,
+          author: agentId ? { kind: "agent", id: agentId } : { kind: "owner" },
+          snoozeUntil: options.snoozeUntil,
+        });
+        if (options.json) {
+          writeJson({ card: redactClaimToken(updated) });
+        } else {
+          writeLine(formatCardLine(updated));
+        }
+      },
+    );
 
   workboard
     .command("feed")

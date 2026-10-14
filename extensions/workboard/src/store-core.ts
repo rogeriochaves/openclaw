@@ -8,7 +8,7 @@ import type {
   WorkboardStatus,
 } from "@openclaw/workboard-contract";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { mergeFeedPatch, normalizeCommentAuthor } from "./feed-normalize.js";
+import { mergeFeedPatch, normalizeCommentAuthor, parseFeedSnoozeUntil } from "./feed-normalize.js";
 import type {
   PersistedWorkboardAttachment,
   PersistedWorkboardBoard,
@@ -956,20 +956,26 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
     }
     const author = normalizeCommentAuthor(input.author);
     const comment = { id: randomUUID(), body, createdAt: now, ...(author ? { author } : {}) };
+    const snoozeUntil = parseFeedSnoozeUntil(input.snoozeUntil, Date.now());
     return await this.updateMetadata(id, (existing) => {
       assertCanMutateClaimedCard(existing, scope);
       const feed = existing.metadata?.feed;
-      // An owner reply settles the card; an agent reply wakes a snoozed one early.
+      // An owner reply settles the card; an agent reply wakes a snoozed one early,
+      // unless the same reply snoozes it again.
       const ack = input.ackFeed === true ? { ackedAt: now, ackedAction: undefined } : {};
       const touchesFeed =
-        input.ackFeed === true || (author?.kind === "agent" && feed?.snoozedUntil);
+        input.ackFeed === true ||
+        snoozeUntil !== undefined ||
+        (author?.kind === "agent" && feed?.snoozedUntil);
       return {
         ...existing.metadata,
         // A backdated comment still sorts before any reply written after its timestamp.
         comments: [...(existing.metadata?.comments ?? []), comment]
           .toSorted((a, b) => a.createdAt - b.createdAt)
           .slice(-MAX_CARD_COMMENTS),
-        ...(touchesFeed ? { feed: { ...feed, ...ack, snoozedUntil: undefined } } : {}),
+        ...(touchesFeed
+          ? { feed: { ...feed, ...ack, snoozedUntil: snoozeUntil ?? undefined } }
+          : {}),
       };
     });
   }
