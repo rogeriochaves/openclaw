@@ -312,6 +312,37 @@ describe("registerWorkboardCli", () => {
     await expect(store.get(card.id)).resolves.toMatchObject({ status: "todo" });
   });
 
+  it("snoozes a Feed card from an agent comment and a feed update", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({ title: "Give Ferenc until Friday" });
+    const program = createProgram(store);
+    const until = Date.now() + 2 * 24 * 60 * 60 * 1000;
+
+    await captureStdout(async () => {
+      await program.parseAsync(
+        [
+          "workboard",
+          "comment",
+          card.id,
+          "Pinging him Friday.",
+          "--agent",
+          "revenue",
+          "--snooze-until",
+          new Date(until).toISOString(),
+        ],
+        { from: "user" },
+      );
+    });
+    expect((await store.get(card.id))?.metadata?.feed?.snoozedUntil).toBe(until);
+
+    await captureStdout(async () => {
+      await program.parseAsync(["workboard", "feed", card.id, '{"snoozeUntil":""}'], {
+        from: "user",
+      });
+    });
+    expect((await store.get(card.id))?.metadata?.feed?.snoozedUntil).toBeUndefined();
+  });
+
   it("attaches a local file with detected type, note, and identical bytes", async () => {
     const store = createWorkboardSqliteTestStore();
     const card = await store.create({ title: "Attach target" });
