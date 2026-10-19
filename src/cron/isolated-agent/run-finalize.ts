@@ -236,6 +236,14 @@ export async function finalizeCronRun(params: {
   if (hasFatalErrorPayload && hasTerminalToolFailure) {
     summary = CODE_MODE_MCP_CATALOG_MISS_MESSAGE;
   }
+  // A scheduled run where every tool call failed did none of its work; report it as failed.
+  const toolSummary = finalRunResult.meta?.toolSummary;
+  if (!hasFatalErrorPayload && toolSummary && toolSummary.calls > 0) {
+    if (toolSummary.failures === toolSummary.calls) {
+      hasFatalErrorPayload = true;
+      embeddedRunError ??= `every tool call failed (${toolSummary.failures}/${toolSummary.calls}: ${toolSummary.tools.join(", ")})`;
+    }
+  }
   const agentDiagnostics = createCronRunDiagnosticsFromAgentResult(finalRunResult, {
     finalStatus: hasFatalErrorPayload ? "error" : "ok",
   });
