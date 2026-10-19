@@ -278,6 +278,53 @@ describe("cron execution diagnostics", { concurrent: false }, () => {
     });
   });
 
+  it("fails a run where every tool call failed", async () => {
+    const modelRef = { provider: "openai", model: "gpt-5.4" };
+    resolveConfiguredModelRefMock.mockReturnValue(modelRef);
+    mockRunCronFallbackPassthrough();
+    runEmbeddedAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "The sweep did not run: no tool worked." }],
+      meta: {
+        agentMeta: {},
+        toolSummary: { calls: 2, failures: 2, tools: ["exec", "read"] },
+      },
+    });
+
+    const { finished, history } = await runPersistedDiagnosticCase({
+      cfg: configFor(modelRef),
+      modelRef,
+      name: "all tool calls failed",
+    });
+
+    for (const outcome of [finished, history]) {
+      expect(outcome).toMatchObject({
+        status: "error",
+        error: "every tool call failed (2/2: exec, read)",
+      });
+    }
+  });
+
+  it("keeps a run ok when only some tool calls failed", async () => {
+    const modelRef = { provider: "openai", model: "gpt-5.4" };
+    resolveConfiguredModelRefMock.mockReturnValue(modelRef);
+    mockRunCronFallbackPassthrough();
+    runEmbeddedAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Sweep done." }],
+      meta: {
+        agentMeta: {},
+        toolSummary: { calls: 3, failures: 1, tools: ["exec", "read"] },
+      },
+    });
+
+    const { finished } = await runPersistedDiagnosticCase({
+      cfg: configFor(modelRef),
+      modelRef,
+      name: "some tool calls failed",
+    });
+
+    expect(finished).toMatchObject({ status: "ok" });
+  });
+
   it("persists and emits terminal tool detail while keeping the payload generic", async () => {
     agentReply(
       { terminalToolFailure: { source: "tool", toolName: "exec", code: "UNKNOWN_TOOL_ID" } },
